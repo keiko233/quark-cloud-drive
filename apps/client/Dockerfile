@@ -17,7 +17,7 @@ COPY ./apps/client /app/apps/client
 COPY ./packages/contract /app/packages/contract
 
 # Pre-fetch deps at build time.
-RUN deno cache -A /app/apps/client/src/main.ts
+RUN deno cache /app/apps/client/src/main.ts
 
 WORKDIR /app/apps/client
 

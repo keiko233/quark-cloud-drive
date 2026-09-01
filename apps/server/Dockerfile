@@ -155,8 +155,8 @@ COPY ./packages/contract /opt/quark-server/packages/contract
 
 # Pre-fetch the npm/JSR deps at build time (download-client.ts + manager share
 # the same deno.json imports) so the container starts without network stalls.
-RUN deno cache -A /opt/quark-server/apps/server/src/main.ts \
-    && deno cache -A /opt/quark-server/apps/server/download-client.ts \
+RUN deno cache /opt/quark-server/apps/server/src/main.ts \
+    && deno cache /opt/quark-server/apps/server/download-client.ts \
     && chmod +x /usr/local/bin/run-quark.sh \
                 /usr/local/bin/launch-quark.sh
 

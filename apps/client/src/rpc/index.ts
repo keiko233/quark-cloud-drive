@@ -8,6 +8,7 @@ import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { SERVER_PORT } from "../env.ts";
 import { log } from "../logger.ts";
 import { clientRouter } from "./router.ts";
+import { handleMcpRequest } from "./mcp.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
   plugins: [
@@ -37,6 +38,9 @@ const handler = new OpenAPIHandler(clientRouter, {
 const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true }));
+
+// MCP over Streamable HTTP (stateless WebStandard transport).
+app.all("/mcp", (c) => handleMcpRequest(c.req.raw));
 
 app.use("/*", async (c, next) => {
   const { matched, response } = await handler.handle(c.req.raw, {

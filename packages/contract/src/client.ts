@@ -32,7 +32,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "Return the Chromium build that Quark is running on (via CDP",
       "`Browser.getVersion`). Quick liveness check.",
     ].join("\n"),
-  }).output(z.object({ version: z.string() })),
+  })
+    .meta({ mcp: { tool: true } })
+    .output(z.object({ version: z.string() })),
 
   queueStatus: oc.route({
     method: "GET",
@@ -41,7 +43,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "Snapshot of the in-process operation queue (single-slot serialization",
       "over the one Quark window). `{running, current, queued, total}`.",
     ].join("\n"),
-  }).output(BrowserQueueStatusSchema),
+  })
+    .meta({ mcp: { tool: true } })
+    .output(BrowserQueueStatusSchema),
 
   events: oc.route({
     method: "GET",
@@ -57,13 +61,17 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     method: "GET",
     path: "/get-login-qrcode",
     description: "Capture the Quark login QR code as a PNG image.",
-  }).output(z.instanceof(File)),
+  })
+    .meta({ mcp: { tool: true } })
+    .output(z.instanceof(File)),
 
   getLoginStatus: oc.route({
     method: "GET",
     path: "/get-login-status",
     description: "Check whether the user is currently logged in to Quark.",
-  }).output(z.object({ loggedIn: z.boolean() })),
+  })
+    .meta({ mcp: { tool: true } })
+    .output(z.object({ loggedIn: z.boolean() })),
 
   getUserInfo: oc.route({
     method: "GET",
@@ -72,7 +80,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "Return basic account info — currently just the storage capacity",
       "string rendered on the home page.",
     ].join("\n"),
-  }).output(z.object({ capacity: z.string() })),
+  })
+    .meta({ mcp: { tool: true } })
+    .output(z.object({ capacity: z.string() })),
 
   getFileList: oc.route({
     method: "GET",
@@ -84,6 +94,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "`{path, items}` list (virtual scroll is exhausted).",
     ].join("\n"),
   })
+    .meta({ mcp: { tool: true } })
     .input(z.object({
       query: z.object({ path: z.string().optional() }).optional(),
     }))
@@ -99,6 +110,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "`{name, alreadyQueued?}`.",
     ].join("\n"),
   })
+    .meta({ mcp: { tool: true } })
     .input(z.object({ query: z.object({ path: z.string() }) }))
     .output(
       eventIterator(
@@ -114,6 +126,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     description:
       "Read Quark's transport center rows (`running`/`complete`/`all`).",
   })
+    .meta({ mcp: { tool: true } })
     .input(z.object({
       query: z.object({
         status: QuarkDownloadStatusModeSchema.optional(),
@@ -128,6 +141,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     description:
       "`resume` / `pause` / `delete` a single transport-center task.",
   })
+    .meta({ mcp: { tool: true } })
     .input(z.object({
       body: z.object({
         taskName: z.string(),
@@ -146,6 +160,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "`{url, savedPath}`.",
     ].join("\n"),
   })
+    .meta({ mcp: { tool: true } })
     .input(z.object({ body: z.object({ url: z.string() }) }))
     .output(
       eventIterator(

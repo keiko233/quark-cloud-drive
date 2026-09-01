@@ -1,0 +1,24 @@
+{
+  "unstable": ["sloppy-imports"],
+  "tasks": {
+    "dev": "deno run --watch -A main.ts",
+    "start": "deno run -A main.ts",
+    "test": "deno test -A --no-check",
+    "gen-manager-client": "deno run -A --node-modules-dir=auto npm:@hey-api/openapi-ts"
+  },
+  "imports": {
+    "@hey-api/openapi-ts": "npm:@hey-api/openapi-ts@0.94.5",
+    "@libs/logger": "jsr:@libs/logger@^3.1.10",
+    "@orpc/openapi": "npm:@orpc/openapi@^1.14.2",
+    "@orpc/server": "npm:@orpc/server@^1.14.2",
+    "@orpc/zod": "npm:@orpc/zod@^1.14.2",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.3",
+    "better-result": "npm:better-result",
+    "eventemitter3": "npm:eventemitter3@^5.0.4",
+    "hono": "npm:hono@^4.12.18",
+    "p-queue": "npm:p-queue@^8.1.0",
+    "playwright": "npm:playwright@^1.59.1",
+    "zod": "npm:zod@^4.4.3"
+  }
+}

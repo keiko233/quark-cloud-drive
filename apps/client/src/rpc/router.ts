@@ -117,4 +117,27 @@ export const clientRouter = base.router({
   importShareLink: base.importShareLink.handler(async ({ input }) => {
     return await importShareLink(input.body.url);
   }),
+
+  // Manager surface — thin forwards to apps/server via the typed serverClient.
+  // Enables API + MCP consumers to control the Quark process through the client.
+  manager: base.manager.router({
+    healthz: base.manager.healthz.handler(() => serverClient.healthz()),
+
+    status: base.manager.status.handler(() => serverClient.status()),
+
+    start: base.manager.start.handler(() => serverClient.start()),
+
+    stop: base.manager.stop.handler(() => serverClient.stop()),
+
+    restart: base.manager.restart.handler(() => serverClient.restart()),
+
+    minimize: base.manager.minimize.handler(() => serverClient.minimize()),
+
+    restore: base.manager.restore.handler(() => serverClient.restore()),
+
+    events: base.manager.events.handler(async function* ({ signal }) {
+      const serverEvents = await serverClient.events({ signal });
+      yield* serverEvents;
+    }),
+  }),
 });

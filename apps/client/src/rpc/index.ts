@@ -11,6 +11,7 @@ import { clientRouter } from "./router.ts";
 import { handleMcpRequest } from "./mcp.ts";
 import { managerPassthrough } from "./manager-passthrough.ts";
 import { vncApp } from "./vnc.ts";
+import { devtoolsApp } from "./devtools.ts";
 import { kvStore } from "../store/kv.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
@@ -57,6 +58,9 @@ app.route("/", managerPassthrough);
 
 // noVNC page + WebSocket→VNC proxy (server only exposes the raw VNC port).
 app.route("/", vncApp);
+
+// Chrome DevTools page + WebSocket bridge to the CDP proxy (server:9223).
+app.route("/", devtoolsApp);
 
 app.use("/*", async (c, next) => {
   const { matched, response } = await handler.handle(c.req.raw, {

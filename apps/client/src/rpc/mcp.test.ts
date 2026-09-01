@@ -53,6 +53,33 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
   assertEquals(notOpted, ["events"]);
 });
 
+// The nested manager sub-router must surface as `manager_*` MCP tools.
+Deno.test("MCP: manager sub-router exposes manager_* tools", () => {
+  const manager = (clientRouter as Record<string, unknown>).manager as Record<
+    string,
+    unknown
+  >;
+  const optedIn: string[] = [];
+  for (const [key, value] of Object.entries(manager)) {
+    if (!value || typeof value !== "object") continue;
+    if (!isProcedure(value)) continue;
+    const def =
+      (value as { "~orpc"?: { meta?: { mcp?: { tool?: boolean } } } })[
+        "~orpc"
+      ];
+    if (def?.meta?.mcp?.tool === true) optedIn.push(`manager_${snake(key)}`);
+  }
+  assertEquals(optedIn, [
+    "manager_healthz",
+    "manager_status",
+    "manager_start",
+    "manager_stop",
+    "manager_restart",
+    "manager_minimize",
+    "manager_restore",
+  ]);
+});
+
 // The snake() export must match the standalone implementation (guards drift).
 Deno.test("MCP: snake export matches helper", () => {
   for (

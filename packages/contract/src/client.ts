@@ -6,6 +6,7 @@ import {
   ClientEventSchema,
   DownloadFileStreamEventSchema,
   FileListStreamEventSchema,
+  HealthzSchema,
   ImportShareLinkStreamEventSchema,
   QuarkDownloadFileResultSchema,
   QuarkDownloadStatusModeSchema,
@@ -14,6 +15,8 @@ import {
   QuarkFileListSchema,
   QuarkImportShareLinkResultSchema,
   QuarkUpdateDownloadStatusResultSchema,
+  ServerEventSchema,
+  ServerStatusSchema,
 } from "./schemas.ts";
 
 /**
@@ -173,4 +176,85 @@ export const clientContract = oc.errors(sharedErrorMap).router({
         QuarkImportShareLinkResultSchema,
       ),
     ),
+
+  // Manager surface — the same process/window controls apps/server exposes,
+  // re-exposed through the client so API + MCP consumers can drive the Quark
+  // process without talking to the manager directly. Each handler forwards to
+  // the typed serverClient. `events` mirrors the server's SSE process stream.
+  manager: oc.errors(sharedErrorMap).router({
+    healthz: oc.route({
+      method: "GET",
+      path: "/manager/healthz",
+      description: "Liveness probe of the upstream manager (apps/server).",
+    })
+      .meta({ mcp: { tool: true } })
+      .output(HealthzSchema),
+
+    status: oc.route({
+      method: "GET",
+      path: "/manager/status",
+      description: [
+        "Snapshot of the Quark process state: state, tracked PID, CDP",
+        "liveness, last CDP activity, and lifecycle counters.",
+      ].join("\n"),
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    start: oc.route({
+      method: "POST",
+      path: "/manager/start",
+      description: [
+        "Start Quark (or restore it from minimized). Idempotent — safe to",
+        "call when already running. Waits for the CDP port to come online.",
+      ].join("\n"),
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    stop: oc.route({
+      method: "POST",
+      path: "/manager/stop",
+      description: "Stop Quark and free its process group. Idempotent.",
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    restart: oc.route({
+      method: "POST",
+      path: "/manager/restart",
+      description: "Stop then start. Useful after settings changes.",
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    minimize: oc.route({
+      method: "POST",
+      path: "/manager/minimize",
+      description: [
+        "Minimize the Quark window (X unmap) — keeps the process alive but",
+        "lets Chromium throttle to free CPU.",
+      ].join("\n"),
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    restore: oc.route({
+      method: "POST",
+      path: "/manager/restore",
+      description: "Restore the minimized Quark window (X map).",
+    })
+      .meta({ mcp: { tool: true } })
+      .output(ServerStatusSchema),
+
+    events: oc.route({
+      method: "GET",
+      path: "/manager/events",
+      description: [
+        "SSE stream of process transitions and CDP activity from the",
+        "upstream manager. Consumers use this for live status without",
+        "polling /manager/status.",
+      ].join("\n"),
+    }).output(eventIterator(ServerEventSchema)),
+  }),
 });

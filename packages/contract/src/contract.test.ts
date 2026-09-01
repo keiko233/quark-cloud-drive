@@ -79,6 +79,7 @@ Deno.test("clientContract exposes the full business surface", () => {
     "downloadStatus",
     "updateDownloadStatus",
     "importShareLink",
+    "manager",
   ];
   assertEquals(Object.keys(clientContract), keys);
   assertEquals(route(clientContract, "version"), {
@@ -105,6 +106,52 @@ Deno.test("clientContract exposes the full business surface", () => {
     path: "/list-file",
     inputStructure: "detailed",
   });
+});
+
+// The nested manager router mirrors the server contract under /manager/* with
+// MCP opt-in on every control procedure (events stays an SSE stream, no tool).
+Deno.test("clientContract manager router mirrors the manager surface", () => {
+  const manager = (clientContract as Record<string, unknown>).manager as Record<
+    string,
+    unknown
+  >;
+  const keys = [
+    "healthz",
+    "status",
+    "start",
+    "stop",
+    "restart",
+    "minimize",
+    "restore",
+    "events",
+  ];
+  assertEquals(Object.keys(manager), keys);
+  assertEquals(route(manager, "status"), {
+    method: "GET",
+    path: "/manager/status",
+  });
+  assertEquals(route(manager, "start"), {
+    method: "POST",
+    path: "/manager/start",
+  });
+  assertEquals(route(manager, "minimize"), {
+    method: "POST",
+    path: "/manager/minimize",
+  });
+  assertEquals(route(manager, "events"), {
+    method: "GET",
+    path: "/manager/events",
+  });
+
+  for (const key of keys.filter((k) => k !== "events")) {
+    const meta = (manager[key] as { "~orpc": { meta?: unknown } })["~orpc"]
+      .meta as { mcp?: { tool?: boolean } };
+    assertEquals(meta.mcp?.tool, true, `expected ${key} to opt into MCP`);
+  }
+  const eventsMeta = (manager.events as { "~orpc": { meta?: unknown } })[
+    "~orpc"
+  ].meta as { mcp?: { tool?: boolean } };
+  assertEquals(eventsMeta?.mcp?.tool, undefined);
 });
 
 Deno.test("long client operations carry detailed inputStructure", () => {

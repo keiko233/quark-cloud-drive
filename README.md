@@ -6,13 +6,13 @@ standalone projects into a single repo:
 - **`quark-docker/`** — a Docker image that runs the Quark Cloud Drive desktop
   client under Wine/Electron with Xorg + VNC/noVNC, plus a Python manager
   (FastAPI) providing a REST API: process lifecycle (`/start`, `/stop`,
-  `/restart`), window control (`/minimize`, `/restore`), status, and a
-  two-stage idle/monitor CDP proxy (9223 → 9222).
+  `/restart`), window control (`/minimize`, `/restore`), status, and a two-stage
+  idle/monitor CDP proxy (9223 → 9222).
 
-- **`quark-cdp-client/`** — a Deno service that connects to the browser over
-  CDP (the one running inside `quark-docker`) and exposes a small HTTP API for
-  Quark Cloud Drive. It calls the manager's `/start` before each business
-  request and re-exposes `/manager/*` passthrough routes.
+- **`quark-cdp-client/`** — a Deno service that connects to the browser over CDP
+  (the one running inside `quark-docker`) and exposes a small HTTP API for Quark
+  Cloud Drive. It calls the manager's `/start` before each business request and
+  re-exposes `/manager/*` passthrough routes.
 
 The top-level `docker-compose.yaml` orchestrates both services together on a
 shared network.
@@ -43,10 +43,10 @@ docker compose up --build
 
 Services:
 
-| Container         | What it runs                    | Host mapping         |
-| ----------------- | ------------------------------- | -------------------- |
-| `quark-docker`    | Quark under Wine + manager API  | VNC `:5900`, noVNC `:6080`, Manager `:8080`, CDP `:9223` (`REMOTE_DEBUGGING_PORT`) |
-| `quark-cdp-client`| Deno CDP -> HTTP API            | HTTP `:3000`         |
+| Container          | What it runs                   | Host mapping                                                                       |
+| ------------------ | ------------------------------ | ---------------------------------------------------------------------------------- |
+| `quark-docker`     | Quark under Wine + manager API | VNC `:5900`, noVNC `:6080`, Manager `:8080`, CDP `:9223` (`REMOTE_DEBUGGING_PORT`) |
+| `quark-cdp-client` | Deno CDP -> HTTP API           | HTTP `:3000`                                                                       |
 
 ## Env
 

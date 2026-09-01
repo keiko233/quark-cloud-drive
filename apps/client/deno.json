@@ -1,0 +1,16 @@
+{
+  "imports": {
+    "@libs/logger": "jsr:@libs/logger@^3.1.10",
+    "@std/async": "jsr:@std/async@^1.0.11",
+    "@std/assert": "jsr:@std/assert@1",
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.3",
+    "hono": "catalog:",
+    "playwright": "catalog:",
+    "zod": "catalog:"
+  },
+  "tasks": {
+    "dev": "deno run --watch -A src/main.ts",
+    "start": "deno run -A src/main.ts",
+    "test": "deno test -A"
+  }
+}

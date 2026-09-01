@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.3",
+    "hono": "catalog:"
+  },
+  "tasks": {
+    "dev": "deno run --watch -A src/main.ts",
+    "start": "deno run -A src/main.ts"
+  }
+}

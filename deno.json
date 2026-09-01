@@ -1,0 +1,26 @@
+{
+  "workspace": ["./apps/*", "./packages/*"],
+  "catalog": {
+    "@orpc/contract": "^1.14.2",
+    "@orpc/openapi": "^1.14.2",
+    "@orpc/server": "^1.14.2",
+    "@orpc/zod": "^1.14.2",
+    "hono": "^4.12.18",
+    "playwright": "^1.59.1",
+    "zod": "^4.4.3"
+  },
+  "fmt": {
+    "exclude": ["quark-cdp-client", "quark-docker"]
+  },
+  "lint": {
+    "exclude": ["quark-cdp-client", "quark-docker"]
+  },
+  "tasks": {
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "check": "deno fmt --check && deno lint && deno check apps/server/src/main.ts apps/client/src/main.ts",
+    "test": "deno test -A apps packages",
+    "dev:client": "deno task --cwd apps/client dev",
+    "dev:server": "deno task --cwd apps/server dev"
+  }
+}

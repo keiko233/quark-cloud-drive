@@ -63,6 +63,38 @@ Deno.test("frameServer handles 64-bit length path", async () => {
   assertEquals(got.payload[69999], 0x42);
 });
 
+Deno.test("frameClient has no trailing bytes (exact header+mask+payload)", async () => {
+  // Regression: headerLength(..., true) already includes the mask, so the
+  // frame must NOT add another +4. Extra trailing zero bytes get parsed as a
+  // garbage second frame by the peer (Chromium closes the CDP WS with 1006).
+  const payload = utf8('{"id":1,"method":"Runtime.evaluate"}');
+  const frame = frameClient(payload, 1);
+  const expected = 2 + 4 + payload.length;
+  assertEquals(frame.length, expected);
+
+  // The frame must be a single well-formed masked frame: header declares the
+  // full length, then exactly the mask and payload.
+  const buf = bufferFrom(frame);
+  const got = await readFrame(buf);
+  assertEquals(got?.opcode, 1);
+  assertEquals(
+    new TextDecoder().decode(got?.payload),
+    '{"id":1,"method":"Runtime.evaluate"}',
+  );
+  // And nothing may be left over for a second frame.
+  assertEquals(await readFrame(buf), null);
+});
+
+Deno.test("frameServer has no trailing bytes", async () => {
+  const payload = utf8("ok");
+  const frame = frameServer(payload, 1);
+  assertEquals(frame.length, 2 + payload.length);
+  const buf = bufferFrom(frame);
+  const got = await readFrame(buf);
+  assertEquals(new TextDecoder().decode(got?.payload), "ok");
+  assertEquals(await readFrame(buf), null);
+});
+
 Deno.test("close frame opcode 8 passes through", async () => {
   const payload = new Uint8Array([0x03, 0xe8]); // close code 1000
   const frame = frameServer(payload, 8);

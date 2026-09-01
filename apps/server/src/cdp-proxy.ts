@@ -82,8 +82,9 @@ export function frameClient(payload: Uint8Array, opcode = 1): Uint8Array {
   const mask = crypto.getRandomValues(new Uint8Array(4));
   const masked = new Uint8Array(payload.length);
   for (let i = 0; i < payload.length; i++) masked[i] = payload[i] ^ mask[i % 4];
+  // headerLength(..., true) already includes the 4 mask bytes.
   const out = new Uint8Array(
-    headerLength(payload.length, true) + 4 + payload.length,
+    headerLength(payload.length, true) + payload.length,
   );
   const head = encodeHeader(out, opcode, payload.length, true);
   out.set(mask, head.length);

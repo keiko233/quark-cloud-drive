@@ -10,7 +10,7 @@ import { OpenAPIHandler } from "@orpc/openapi/fetch";
 import { OpenAPIReferencePlugin } from "@orpc/openapi/plugins";
 import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { serverContract } from "@quark/contract/server";
-import { QUARK_API_PORT, QUARK_AUTOSTART } from "./env.ts";
+import { LAUNCH_SCRIPT, QUARK_API_PORT, QUARK_AUTOSTART } from "./env.ts";
 import { log } from "./logger.ts";
 import { ProcessManager } from "./process.ts";
 import { startCdpProxy } from "./cdp-proxy.ts";
@@ -106,7 +106,16 @@ app.use("/*", async (c, next) => {
 
 function start(): void {
   if (QUARK_AUTOSTART) {
-    processManager.start().catch((e) => log.error("autostart failed:", e));
+    if (!processManager.launchScriptAvailable()) {
+      // Local dev hosts usually lack the Wine/Quark launch script — don't
+      // spam an ERROR, just skip autostart and keep the API + CDP proxy up.
+      log.warn(
+        `QUARK_AUTOSTART=true but launch script missing at "${LAUNCH_SCRIPT}" — ` +
+          "skipping autostart. Install it, set LAUNCH_SCRIPT, or set QUARK_AUTOSTART=false.",
+      );
+    } else {
+      processManager.start().catch((e) => log.error("autostart failed:", e));
+    }
   }
   Deno.serve({ port: QUARK_API_PORT }, app.fetch);
   log.info(`server listening on :${QUARK_API_PORT}`);

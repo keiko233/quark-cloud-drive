@@ -118,6 +118,16 @@ export class ProcessManager {
 
   // ── lifecycle ──────────────────────────────────────────────────────────────
 
+  /** True when the launch script exists on this host (Quark can actually start). */
+  launchScriptAvailable(): boolean {
+    try {
+      const stat = Deno.statSync(LAUNCH_SCRIPT);
+      return stat.isFile;
+    } catch {
+      return false;
+    }
+  }
+
   async start(): Promise<ServerStatus> {
     if (await this.isProcAlive()) {
       // If Chromium is serving but we think we're minimized, restore the
@@ -132,6 +142,13 @@ export class ProcessManager {
         this.setState("running_visible");
       }
       return this.status();
+    }
+
+    if (!this.launchScriptAvailable()) {
+      throw new Error(
+        `launch script not found at "${LAUNCH_SCRIPT}" — Quark cannot be started on this host. ` +
+          "Install it, set LAUNCH_SCRIPT to the real script, or run with QUARK_AUTOSTART=false.",
+      );
     }
 
     log.info("starting Quark via launch script");

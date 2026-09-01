@@ -274,7 +274,10 @@ async function proxyWs(
   let quark: Deno.Conn;
   try {
     quark = await Deno.connect({ hostname: QUARK_HOST, port: quarkPort });
-  } catch {
+  } catch (e) {
+    log.warn(
+      `[cdp-proxy] quark not listening on :${quarkPort} — closing client: ${e}`,
+    );
     clientConn.close();
     return;
   }
@@ -315,10 +318,14 @@ async function proxyWs(
     dst: WritableStreamDefaultWriter<Uint8Array>,
     isClientSrc: boolean,
   ) => {
+    const dir = isClientSrc ? "client→" : "quark→";
     try {
       while (true) {
         const frame = await readFrame(src);
-        if (!frame) break;
+        if (!frame) {
+          log.debug(`[cdp-proxy] ${dir}relay: source EOF — closing both`);
+          break;
+        }
         const { opcode, payload } = frame;
         if (opcode === 8) {
           // close
@@ -353,8 +360,9 @@ async function proxyWs(
         );
         if (isClientSrc) onActivity();
       }
-    } catch {
+    } catch (e) {
       // connection error — end this direction
+      log.warn(`[cdp-proxy] ${dir}relay error — closing both: ${e}`);
     } finally {
       closeBoth();
     }

@@ -22,6 +22,13 @@ import { log } from "./logger.ts";
 
 const QUARK_HOST = "127.0.0.1";
 
+// After a spawn the launch script (wine start.exe /Unix LNK) exits early while
+// Chromium keeps booting, so the CDP port only opens seconds later. Treat a
+// recent spawn as "starting" — a concurrent /start (e.g. the client's
+// wake-on-connect while Quark is still booting) must not spawn a second
+// instance that would fight over the shared WINEPREFIX / single-instance app.
+const START_GRACE_MS = 60_000;
+
 // Wine/Chromium user-mode process names to match on for by-name kills. Under
 // Wine, QuarkCloudDrive.exe runs as Chromium's "CrBrowserMain" process, so the
 // binary name never appears in the process list — we match on the Chromium
@@ -74,6 +81,7 @@ export class ProcessManager {
   private pgid: number | null = null;
   private startedAt: number | null = null;
   private lastCdpActivity: number | null = null;
+  private lastLaunchAt: number | null = null;
   private counts = { start: 0, stop: 0, minimize: 0 };
 
   private readonly patterns: string[];
@@ -151,6 +159,24 @@ export class ProcessManager {
       );
     }
 
+    // A launch is already in progress (Chromium still booting, CDP port not
+    // yet open). Don't spawn a second instance.
+    if (
+      this.lastLaunchAt !== null &&
+      Date.now() - this.lastLaunchAt < START_GRACE_MS
+    ) {
+      log.debug(
+        `start: launch ${Date.now() - this.lastLaunchAt}ms ago still within ` +
+          "grace window — not relaunching",
+      );
+      if (
+        this.state !== "running_visible" && this.state !== "running_minimized"
+      ) {
+        this.setState("running_visible");
+      }
+      return this.status();
+    }
+
     log.info("starting Quark via launch script");
     const cmd = this.buildLaunchCommand();
     try {
@@ -179,6 +205,7 @@ export class ProcessManager {
     }
 
     this.startedAt = Date.now();
+    this.lastLaunchAt = Date.now();
     this.counts.start++;
     this.setState("running_visible");
     log.info(`Quark started (pid=${this.proc.pid} pgid=${this.pgid})`);
@@ -223,6 +250,7 @@ export class ProcessManager {
     this.proc = null;
     this.pgid = null;
     this.startedAt = null;
+    this.lastLaunchAt = null;
     this.counts.stop++;
     this.setState("stopped");
     return this.status();

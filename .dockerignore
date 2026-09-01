@@ -1,0 +1,11 @@
+# Exclude everything not needed by the workspace Dockerfiles. Do NOT exclude
+# apps/server/wineprefix.tar.zst — it is bind-mounted by the server Dockerfile.
+.git
+.github
+docs
+data
+apps/*/data
+*.sqlite3
+wine-data*
+downloads
+.env

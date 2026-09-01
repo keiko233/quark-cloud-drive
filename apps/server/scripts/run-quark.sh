@@ -317,4 +317,5 @@ if [ ! -e "$_wow64" ]; then
 fi
 
 # Mesa env-vars: pass through; launch-quark.sh unsets them if empty.
-exec deno run -A /opt/quark-server/src/main.ts
+cd /opt/quark-server
+exec deno run -A /opt/quark-server/apps/server/src/main.ts

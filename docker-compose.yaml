@@ -1,43 +1,30 @@
 name: quark-cloud-drive
 
 services:
-  quark-docker:
+  server:
     build:
-      context: ./quark-docker
-    image: ghcr.io/keiko233/quark-docker:latest
-    container_name: quark-docker
-    hostname: quark-docker
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: ghcr.io/keiko233/quark-server:latest
+    container_name: quark-server
+    hostname: quark-server
     platform: linux/amd64
 
     devices:
-      - /dev/dri:/dev/dri  # Intel/AMD GPU
+      - /dev/dri:/dev/dri # Intel/AMD GPU
 
     environment:
       # Set before startup, e.g. MESA_LOADER_DRIVER_OVERRIDE=iris or radeonsi.
       MESA_LOADER_DRIVER_OVERRIDE: "${MESA_LOADER_DRIVER_OVERRIDE:-}"
 
-      # ── Manager (REST API + idle policy) ───────────────────────────────
-      # API listen port (FastAPI). /openapi.json and /spec.json are exposed.
+      # Thin process manager (Deno). Idle policy moved to the client.
       QUARK_API_PORT: "${QUARK_API_PORT:-8080}"
-      # Container startup: cold-start Quark automatically when manager boots.
       QUARK_AUTOSTART: "${QUARK_AUTOSTART:-true}"
-      # Two-stage idle policy: minimize window first, then stop the process.
-      # 0 disables that stage.
-      QUARK_IDLE_MINIMIZE_TIMEOUT: "${QUARK_IDLE_MINIMIZE_TIMEOUT:-300}"
-      QUARK_IDLE_STOP_TIMEOUT: "${QUARK_IDLE_STOP_TIMEOUT:-1800}"
-      # Monitor sampling cadence.
-      QUARK_IDLE_CHECK_INTERVAL: "${QUARK_IDLE_CHECK_INTERVAL:-10}"
-      # Process-tree CPU% above this counts as "busy" and resets the idle
-      # clock even with zero CDP traffic (e.g. background uploads).
-      QUARK_CPU_BUSY_THRESHOLD: "${QUARK_CPU_BUSY_THRESHOLD:-15.0}"
-      # When the window is minimized and a CDP client connects, restore it
-      # automatically so backgrounded Chromium doesn't throttle automation.
-      QUARK_RESTORE_ON_CDP: "${QUARK_RESTORE_ON_CDP:-true}"
 
     ports:
       - "5900:5900"
       - "${NOVNC_PORT:-6080}:6080"
-      - "${REMOTE_DEBUGGING_PORT:-9222}:9223"
+      - "${CDP_PROXY_PORT:-9223}:9223"
       - "${QUARK_API_PORT:-8080}:8080"
 
     volumes:
@@ -56,7 +43,10 @@ services:
     healthcheck:
       # Probe the manager, not the CDP port: when Quark is idle-stopped the
       # CDP port is intentionally down, but the manager itself is still up.
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
+      test: [
+        "CMD-SHELL",
+        "curl -sf http://127.0.0.1:8080/healthz >/dev/null || exit 1",
+      ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -64,33 +54,40 @@ services:
 
     restart: unless-stopped
 
-  quark-cdp-client:
+  client:
     build:
-      context: ./quark-cdp-client
-    image: ghcr.io/keiko233/quark-cdp-client:latest
-    container_name: quark-cdp-client
-    networks:
-      - quark-network
+      context: .
+      dockerfile: apps/client/Dockerfile
+    image: ghcr.io/keiko233/quark-client:latest
+    container_name: quark-client
 
     environment:
-      CDP_URL: http://127.0.0.1:${CDP_FORWARD_LOCAL_PORT:-9222}
-      CDP_FORWARD_HOST: ${CDP_FORWARD_HOST:-quark-docker}
-      CDP_FORWARD_PORT: ${CDP_FORWARD_PORT:-9223}
-      CDP_FORWARD_LOCAL_PORT: ${CDP_FORWARD_LOCAL_PORT:-9222}
-      QUARK_MANAGER_URL: ${QUARK_MANAGER_URL:-http://quark-docker:8080}
+      # server is reachable by name on the compose network.
+      SERVER_URL: "${SERVER_URL:-http://server:8080}"
+      CDP_URL: "${CDP_URL:-http://server:9223}"
+      SERVER_PORT: "${SERVER_PORT:-3000}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+      RECONNECT_INTERVAL_MS: "${RECONNECT_INTERVAL_MS:-5000}"
+      CLIENT_IDLE_MINIMIZE_AFTER_MS: "${CLIENT_IDLE_MINIMIZE_AFTER_MS:-300000}"
+      CLIENT_IDLE_STOP_AFTER_MS: "${CLIENT_IDLE_STOP_AFTER_MS:-1800000}"
+      CLIENT_IDLE_CHECK_INTERVAL_MS: "${CLIENT_IDLE_CHECK_INTERVAL_MS:-10000}"
 
     depends_on:
-      quark-docker:
+      server:
         condition: service_healthy
 
     ports:
-      - "3000:3000"
+      - "${SERVER_PORT:-3000}:3000"
+
+    volumes:
+      # Deno KV (task/download history) survives container restarts.
+      - client-data:/app/apps/client/data
 
     security_opt:
       - seccomp:unconfined
 
     restart: unless-stopped
 
-networks:
-  quark-network:
-    driver: bridge
+volumes:
+  client-data:
+    driver: local

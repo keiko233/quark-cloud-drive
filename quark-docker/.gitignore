@@ -1,9 +1,0 @@
-installer.exe
-!installer.exe
-wine-data
-wine-data-spark
-wine-data.bak-*
-downloads
-wineprefix.tar.zst
-.prepared
-__pycache__

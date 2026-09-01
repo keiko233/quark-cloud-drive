@@ -1,10 +1,10 @@
 {
   "workspace": ["./apps/*", "./packages/*"],
   "fmt": {
-    "exclude": ["quark-cdp-client", "quark-docker"]
+    "exclude": ["data"]
   },
   "lint": {
-    "exclude": ["quark-cdp-client", "quark-docker"]
+    "exclude": ["data"]
   },
   "tasks": {
     "fmt": "deno fmt",

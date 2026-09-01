@@ -1,4 +1,4 @@
-name: Build quark-cdp-client
+name: Build quark-client
 
 on:
   push:
@@ -32,7 +32,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/quark-cdp-client
+          images: ghcr.io/${{ github.repository_owner }}/quark-client
           tags: |
             type=raw,value=latest
             type=sha
@@ -40,8 +40,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ./quark-cdp-client
-          file: ./quark-cdp-client/Dockerfile
+          context: .
+          file: ./apps/client/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

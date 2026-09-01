@@ -1,4 +1,12 @@
 # syntax=docker/dockerfile:1
+# apps/server — thin process manager + CDP proxy for the headless Quark client.
+#
+# Build context must be the repository root (the Dockerfile copies the
+# workspace so `@quark/contract` resolves). The 1.3 GB wineprefix.tar.zst is a
+# build artifact (gitignored); keep it under apps/server/.
+#
+# This replaces the old quark-docker image: the Python FastAPI manager and
+# cdp_proxy.py sidecar are gone, replaced by apps/server/src (Deno).
 FROM scottyhardy/docker-wine:latest AS base
 
 # Common runtime for both the manual installer environment and the final image.
@@ -56,9 +64,7 @@ RUN apt-get update && \
         libxinerama1 \
         libxrandr2 \
         libxrender1 \
-        libxxf86vm1 \
-        python3 \
-        python3-pip \
+        libxxfvm86m1 \
     && locale-gen zh_CN.UTF-8 \
     && curl -fL "$DEEPIN_WINE8_URL" -o /tmp/deepin-wine8.deb \
     && dpkg-deb -x /tmp/deepin-wine8.deb / \
@@ -102,10 +108,14 @@ Section "Screen"
 EndSection
 XORGEOF
 
+# Deno runtime for the manager (replaces python3/fastapi/uvicorn/psutil).
+RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && rm -rf /root/.deno
+
 FROM base AS install-debug
 
-COPY --chown=wineuser:wineuser ./installer.exe /tmp/installer.exe
-COPY --chown=wineuser:wineuser ./cjk-fonts.reg /tmp/cjk-fonts.reg
+COPY --chown=wineuser:wineuser ./apps/server/installer.exe /tmp/installer.exe
+COPY --chown=wineuser:wineuser ./apps/server/cjk-fonts.reg /tmp/cjk-fonts.reg
 
 USER root
 
@@ -117,7 +127,7 @@ CMD rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 && \
 
 FROM base
 
-RUN --mount=type=bind,source=wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
+RUN --mount=type=bind,source=apps/server/wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
     rm -rf /opt/wineprefix && \
     mkdir -p /opt/wineprefix && \
     tar --zstd -xf /tmp/wineprefix.tar.zst -C /opt/wineprefix && \
@@ -137,25 +147,22 @@ RUN --mount=type=bind,source=wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
 
 COPY ./scripts/run-quark.sh /usr/local/bin/run-quark.sh
 COPY ./scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
-COPY ./scripts/cdp_proxy.py /usr/local/bin/cdp_proxy.py
-COPY ./scripts/manager.py /usr/local/bin/manager.py
 
-# Manager dependencies. --break-system-packages is required because Debian's
-# python3 is an externally-managed (PEP 668) install.
-RUN pip3 install --break-system-packages --no-cache-dir \
-        fastapi \
-        uvicorn \
-        psutil \
+# The manager source + workspace. The image is run with cwd=/opt/quark-server.
+COPY ./deno.json /opt/quark-server/deno.json
+COPY ./apps/server /opt/quark-server/apps/server
+COPY ./packages/contract /opt/quark-server/packages/contract
+
+# Pre-fetch the npm/JSR deps at build time (download-client.ts + manager share
+# the same deno.json imports) so the container starts without network stalls.
+RUN deno cache -A /opt/quark-server/apps/server/src/main.ts \
+    && deno cache -A /opt/quark-server/apps/server/download-client.ts \
     && chmod +x /usr/local/bin/run-quark.sh \
-                /usr/local/bin/launch-quark.sh \
-                /usr/local/bin/cdp_proxy.py \
-                /usr/local/bin/manager.py
+                /usr/local/bin/launch-quark.sh
 
 # noVNC + websockify: serve the x11vnc :5900 desktop over HTTP/WebSocket so the
 # desktop is reachable from a browser (http://host:6080/vnc.html) without a
-# native VNC client. Installed after the pip step so its apt-managed Python
-# dependencies don't collide with pip's dependency resolution above.
-# index.html -> vnc.html makes the bare :6080 URL land on the client directly.
+# native VNC client.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends novnc websockify && \
     ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html && \

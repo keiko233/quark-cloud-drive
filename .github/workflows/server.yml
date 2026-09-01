@@ -1,16 +1,16 @@
-name: Build quark-docker
+name: Build quark-server
 
 on:
   push:
     branches:
       - main
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: keiko233/quark-docker
+  IMAGE_NAME: keiko233/quark-server
 
 jobs:
   docker:
@@ -30,15 +30,15 @@ jobs:
 
       - name: Install Playwright Chromium
         run: deno task postinstall
-        working-directory: quark-docker
+        working-directory: apps/server
 
       - name: Download Quark installer
         run: deno task download-client
-        working-directory: quark-docker
+        working-directory: apps/server
 
       - name: Prepare Wine prefix
         run: ./scripts/prepare-wineprefix.sh
-        working-directory: quark-docker
+        working-directory: apps/server
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -63,8 +63,8 @@ jobs:
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
-          context: ./quark-docker
-          file: ./quark-docker/Dockerfile
+          context: .
+          file: ./apps/server/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -13,16 +13,20 @@ import {
   QuarkDownloadTaskOperationSchema,
   QuarkFileListSchema,
   QuarkImportShareLinkResultSchema,
-  QuarkSetDownloadStatusResultSchema,
+  QuarkUpdateDownloadStatusResultSchema,
 } from "./schemas.ts";
 
 /**
  * apps/client contract — the orchestration + business surface.
  *
- * Long operations (`downloadFile`, `getFileList`, `importShareLink`) are SSE
+ * Long operations (`downloadFile`, `listFile`, `importShareLink`) are SSE
  * streams: they yield progress events and terminate with the final result.
  * Short queries stay plain JSON. `/events` is a global event bus (queue +
  * process + monitor + operation events).
+ *
+ * Naming: procedures avoid `get_`/`set_` prefixes where the HTTP method is
+ * sufficient (`listFile`, `loginStatus`, `downloadStatus`). `/download-status`
+ * is a single resource: GET reads the transport center, POST mutates a task.
  */
 export const clientContract = oc.errors(sharedErrorMap).router({
   version: oc.route({
@@ -38,7 +42,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
 
   queueStatus: oc.route({
     method: "GET",
-    path: "/get-queue-status",
+    path: "/queue-status",
     description: [
       "Snapshot of the in-process operation queue (single-slot serialization",
       "over the one Quark window). `{running, current, queued, total}`.",
@@ -57,25 +61,25 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     ].join("\n"),
   }).output(eventIterator(ClientEventSchema)),
 
-  getLoginQRCode: oc.route({
+  loginQRCode: oc.route({
     method: "GET",
-    path: "/get-login-qrcode",
+    path: "/login-qrcode",
     description: "Capture the Quark login QR code as a PNG image.",
   })
     .meta({ mcp: { tool: true } })
     .output(z.instanceof(File)),
 
-  getLoginStatus: oc.route({
+  loginStatus: oc.route({
     method: "GET",
-    path: "/get-login-status",
+    path: "/login-status",
     description: "Check whether the user is currently logged in to Quark.",
   })
     .meta({ mcp: { tool: true } })
     .output(z.object({ loggedIn: z.boolean() })),
 
-  getUserInfo: oc.route({
+  userInfo: oc.route({
     method: "GET",
-    path: "/get-user-info",
+    path: "/user-info",
     description: [
       "Return basic account info — currently just the storage capacity",
       "string rendered on the home page.",
@@ -84,9 +88,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     .meta({ mcp: { tool: true } })
     .output(z.object({ capacity: z.string() })),
 
-  getFileList: oc.route({
+  listFile: oc.route({
     method: "GET",
-    path: "/get-file-list",
+    path: "/list-file",
     inputStructure: "detailed",
     description: [
       "List files/folders in a directory. SSE stream yielding",
@@ -119,9 +123,10 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       ),
     ),
 
-  getDownloadStatus: oc.route({
+  // Single resource /download-status: GET reads, POST mutates.
+  downloadStatus: oc.route({
     method: "GET",
-    path: "/get-download-status",
+    path: "/download-status",
     inputStructure: "detailed",
     description:
       "Read Quark's transport center rows (`running`/`complete`/`all`).",
@@ -134,9 +139,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     }))
     .output(QuarkDownloadStatusSchema),
 
-  setDownloadStatus: oc.route({
+  updateDownloadStatus: oc.route({
     method: "POST",
-    path: "/set-download-status",
+    path: "/download-status",
     inputStructure: "detailed",
     description:
       "`resume` / `pause` / `delete` a single transport-center task.",
@@ -148,7 +153,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
         operation: QuarkDownloadTaskOperationSchema,
       }),
     }))
-    .output(QuarkSetDownloadStatusResultSchema),
+    .output(QuarkUpdateDownloadStatusResultSchema),
 
   importShareLink: oc.route({
     method: "POST",

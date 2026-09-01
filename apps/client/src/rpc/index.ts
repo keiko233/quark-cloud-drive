@@ -9,6 +9,8 @@ import { SERVER_PORT } from "../env.ts";
 import { log } from "../logger.ts";
 import { clientRouter } from "./router.ts";
 import { handleMcpRequest } from "./mcp.ts";
+import { managerPassthrough } from "./manager-passthrough.ts";
+import { vncApp } from "./vnc.ts";
 import { kvStore } from "../store/kv.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
@@ -21,7 +23,7 @@ const handler = new OpenAPIHandler(clientRouter, {
           version: "1.0.0",
           description: [
             "Programmatic interface to a headless Quark Cloud Drive client",
-            "driven over CDP via Playwright. Long operations (get_file_list,",
+            "driven over CDP via Playwright. Long operations (list_file,",
             "download_file, import_share_link) stream SSE progress; short",
             "queries return plain JSON.",
           ].join("\n"),
@@ -40,16 +42,21 @@ const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true }));
 
-// Internal ops: recently recorded task + download history (not part of the
-// oRPC contract — read-only convenience for debugging/ops).
+// Internal ops: recently recorded task history (not part of the oRPC contract
+// — read-only convenience for debugging/ops).
 app.get("/history", async (c) => {
   const tasks = await kvStore.listTasks(50);
-  const downloads = await kvStore.listDownloads(50);
-  return c.json({ tasks, downloads });
+  return c.json({ tasks });
 });
 
 // MCP over Streamable HTTP (stateless WebStandard transport).
 app.all("/mcp", (c) => handleMcpRequest(c.req.raw));
+
+// Legacy manager passthrough (flat /manager-* names, forwarded to apps/server).
+app.route("/", managerPassthrough);
+
+// noVNC page + WebSocket→VNC proxy (server only exposes the raw VNC port).
+app.route("/", vncApp);
 
 app.use("/*", async (c, next) => {
   const { matched, response } = await handler.handle(c.req.raw, {

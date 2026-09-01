@@ -208,14 +208,14 @@ export async function readDownloadStatusRaw(
     tasks.push(...await readDownloadTasks(homePage, state));
   }
 
-  log.debug(`getDownloadStatus: ${tasks.length} tasks`);
+  log.debug(`downloadStatus: ${tasks.length} tasks`);
   return { tasks };
 }
 
 /**
  * Queued public entry point (used by the router). Cached for 5s per mode.
  */
-export function getDownloadStatus(
+export function downloadStatus(
   mode: QuarkDownloadStatusMode = "running",
 ): Promise<QuarkDownloadStatus> {
   const cacheKey = mode ?? "running";
@@ -223,7 +223,7 @@ export function getDownloadStatus(
   if (cached !== undefined) return Promise.resolve(cached);
 
   return getOperationQueue().run(
-    "getDownloadStatus",
+    "downloadStatus",
     { key: `downloadStatus:${cacheKey}` },
     async () => {
       const result = await readDownloadStatusRaw(mode);

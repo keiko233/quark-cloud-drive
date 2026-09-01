@@ -4,15 +4,15 @@ import { getOperationQueue } from "../browser/context.ts";
 import { userInfoCache } from "../cache/caches.ts";
 
 /** Queued public entry point. Cached for 30s. */
-export function getUserInfo(): Promise<{ capacity: string }> {
+export function userInfo(): Promise<{ capacity: string }> {
   const cached = userInfoCache.get("s");
   if (cached !== undefined) return Promise.resolve(cached);
 
   return getOperationQueue().run(
-    "getUserInfo",
+    "userInfo",
     { key: "userInfo" },
     async () => {
-      log.debug("getUserInfo: start");
+      log.debug("userInfo: start");
 
       const homePage = getHomePage();
       await homePage.bringToFront();
@@ -22,7 +22,7 @@ export function getUserInfo(): Promise<{ capacity: string }> {
       await capacityNumber.waitFor({ state: "visible", timeout: 10_000 });
 
       const capacity = (await capacityNumber.textContent())?.trim() ?? "";
-      log.debug(`getUserInfo: capacity="${capacity}"`);
+      log.debug(`userInfo: capacity="${capacity}"`);
       const result = { capacity };
       userInfoCache.set("s", result);
       return result;

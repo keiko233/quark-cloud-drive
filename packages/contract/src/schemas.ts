@@ -127,7 +127,7 @@ export const QuarkDownloadTaskSchema = z.object({
   state: QuarkDownloadTaskStateSchema,
   name: z.string().describe(
     "File/folder name as shown in the transport center row. Use this " +
-      "value as the `taskName` argument to set-download-status.",
+      "value as the `taskName` argument to POST /download-status.",
   ),
   size: z.string().describe(
     "Human-readable size text (e.g. `12.3MB`).",
@@ -196,7 +196,7 @@ export const QuarkImportShareLinkResultSchema = z.object({
   ),
 });
 
-export const QuarkSetDownloadStatusResultSchema = z.object({
+export const QuarkUpdateDownloadStatusResultSchema = z.object({
   success: z.boolean().describe(
     "True when the task was found and the operation applied.",
   ),
@@ -282,8 +282,8 @@ export type QuarkDownloadFileResult = z.infer<
 export type QuarkImportShareLinkResult = z.infer<
   typeof QuarkImportShareLinkResultSchema
 >;
-export type QuarkSetDownloadStatusResult = z.infer<
-  typeof QuarkSetDownloadStatusResultSchema
+export type QuarkUpdateDownloadStatusResult = z.infer<
+  typeof QuarkUpdateDownloadStatusResultSchema
 >;
 export type ProcessState = z.infer<typeof ProcessStateSchema>;
 export type ProcessCounts = z.infer<typeof ProcessCountsSchema>;

@@ -1,10 +1,10 @@
 import { assertEquals } from "@std/assert";
 import {
-  getFileListItemKey,
+  listFileItemKey,
   normalizeFileListText,
   parsePathSegments,
   planNavigation,
-} from "./get-file-list.ts";
+} from "./list-file.ts";
 
 Deno.test("parsePathSegments splits forward/back slashes and drops 首页", () => {
   assertEquals(parsePathSegments("Movies/2024"), ["Movies", "2024"]);
@@ -22,7 +22,7 @@ Deno.test("normalizeFileListText collapses whitespace", () => {
   assertEquals(normalizeFileListText(null), "");
 });
 
-Deno.test("getFileListItemKey joins identity fields", () => {
+Deno.test("listFileItemKey joins identity fields", () => {
   const item = {
     name: "a.mp4",
     size: "1.2GB",
@@ -30,7 +30,7 @@ Deno.test("getFileListItemKey joins identity fields", () => {
     updatedAt: "2026-06-07",
   };
   assertEquals(
-    getFileListItemKey(item),
+    listFileItemKey(item),
     "a.mp4\u00001.2GB\u0000视频\u00002026-06-07",
   );
 });

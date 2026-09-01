@@ -32,7 +32,7 @@ const SERVER_INSTRUCTIONS = [
   "  Quark; the first request wakes it (a few seconds of cold-start).",
   "- **Concurrency is 1**: tools are served serially, not in parallel.",
   "- **Writes require login**: downloads, share imports, and capacity reads",
-  "  need an authenticated session. Guard with `get_login_status`.",
+  "  need an authenticated session. Guard with `login_status`.",
 ].join("\n");
 
 interface McpToolMeta {
@@ -121,7 +121,7 @@ function registerRouterTools(mcp: McpServer, router: AnyRouter): number {
                 toInput((args ?? {}) as Record<string, unknown>) as never,
                 { context: {}, signal: extra?.signal },
               );
-              // Handle the File output of get_login_qrcode specially.
+              // Handle the File output of login_qrcode specially.
               if (result instanceof File) {
                 const buf = new Uint8Array(await result.arrayBuffer());
                 return {

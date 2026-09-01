@@ -17,7 +17,7 @@ import {
   TASK_LIST_SELECTOR,
 } from "./download-status.ts";
 
-export interface QuarkSetDownloadStatusResult {
+export interface QuarkUpdateDownloadStatusResult {
   success: boolean;
 }
 
@@ -75,13 +75,13 @@ async function findTaskTab(
 }
 
 /** Queued public entry point (used by the router). */
-export function setDownloadStatus(
+export function updateDownloadStatus(
   taskName: string,
   operation: QuarkDownloadTaskOperation,
-): Promise<QuarkSetDownloadStatusResult> {
+): Promise<QuarkUpdateDownloadStatusResult> {
   return getOperationQueue().run(
-    "setDownloadStatus",
-    { key: `setDownloadStatus:${taskName}`, priority: 1 },
+    "updateDownloadStatus",
+    { key: `updateDownloadStatus:${taskName}`, priority: 1 },
     async () => {
       const homePage = getHomePage();
       await homePage.bringToFront();
@@ -91,19 +91,19 @@ export function setDownloadStatus(
 
       const foundOn = await findTaskTab(taskName);
       if (foundOn === null) {
-        log.warn(`setDownloadStatus: task not found "${taskName}"`);
+        log.warn(`updateDownloadStatus: task not found "${taskName}"`);
         return { success: false };
       }
 
       log.debug(
-        `setDownloadStatus: task "${taskName}" found on tab "${foundOn}"`,
+        `updateDownloadStatus: task "${taskName}" found on tab "${foundOn}"`,
       );
       await selectDownloadTaskTab(homePage, foundOn);
 
       const success = await findAndOperateTask(homePage, taskName, operation);
       if (!success) {
         log.warn(
-          `setDownloadStatus: task "${taskName}" disappeared from "${foundOn}" tab after discovery`,
+          `updateDownloadStatus: task "${taskName}" disappeared from "${foundOn}" tab after discovery`,
         );
       }
 

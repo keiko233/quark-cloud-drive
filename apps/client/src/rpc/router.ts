@@ -7,13 +7,13 @@ import { clientContract } from "@quark/contract/client";
 import type { ClientEvent } from "@quark/contract/schemas";
 import {
   downloadFile,
-  getDownloadStatus,
-  getFileList,
-  getLoginQRCode,
-  getLoginStatus,
-  getUserInfo,
+  downloadStatus,
   importShareLink,
-  setDownloadStatus,
+  listFile,
+  loginQRCode,
+  loginStatus,
+  updateDownloadStatus,
+  userInfo,
 } from "../actions/index.ts";
 import { getBrowser, getOperationQueue } from "../browser/context.ts";
 import { Channel } from "../queue/operation-queue.ts";
@@ -85,30 +85,33 @@ export const clientRouter = base.router({
     }
   }),
 
-  getLoginQRCode: base.getLoginQRCode.handler(async () => {
-    const bytes = await getLoginQRCode();
+  loginQRCode: base.loginQRCode.handler(async () => {
+    const bytes = await loginQRCode();
     return new File([Uint8Array.from(bytes)], "login-qrcode.png", {
       type: "image/png",
     });
   }),
 
-  getLoginStatus: base.getLoginStatus.handler(() => getLoginStatus()),
-  getUserInfo: base.getUserInfo.handler(() => getUserInfo()),
+  loginStatus: base.loginStatus.handler(() => loginStatus()),
+  userInfo: base.userInfo.handler(() => userInfo()),
 
-  getFileList: base.getFileList.handler(async ({ input }) => {
-    return await getFileList(input.query?.path);
+  listFile: base.listFile.handler(async ({ input }) => {
+    return await listFile(input.query?.path);
   }),
 
   downloadFile: base.downloadFile.handler(async ({ input }) => {
     return await downloadFile(input.query.path);
   }),
 
-  getDownloadStatus: base.getDownloadStatus.handler(async ({ input }) => {
-    return await getDownloadStatus(input.query?.status);
+  downloadStatus: base.downloadStatus.handler(async ({ input }) => {
+    return await downloadStatus(input.query?.status);
   }),
 
-  setDownloadStatus: base.setDownloadStatus.handler(async ({ input }) => {
-    return await setDownloadStatus(input.body.taskName, input.body.operation);
+  updateDownloadStatus: base.updateDownloadStatus.handler(async ({ input }) => {
+    return await updateDownloadStatus(
+      input.body.taskName,
+      input.body.operation,
+    );
   }),
 
   importShareLink: base.importShareLink.handler(async ({ input }) => {

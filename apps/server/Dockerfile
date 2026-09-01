@@ -160,16 +160,12 @@ RUN deno cache -A /opt/quark-server/apps/server/src/main.ts \
     && chmod +x /usr/local/bin/run-quark.sh \
                 /usr/local/bin/launch-quark.sh
 
-# noVNC + websockify: serve the x11vnc :5900 desktop over HTTP/WebSocket so the
-# desktop is reachable from a browser (http://host:6080/vnc.html) without a
-# native VNC client.
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends novnc websockify && \
-    ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html && \
-    rm -rf /var/lib/apt/lists/*
+# The raw VNC desktop is exposed on :5900 (x11vnc). The noVNC web page lives on
+# the client container (apps/client), which proxies the browser WebSocket back
+# to this port — no websockify/novnc package needed here.
 
 USER root
 
-EXPOSE 6080 8080 9223
+EXPOSE 5900 8080 9223
 
 ENTRYPOINT ["/usr/local/bin/run-quark.sh"]

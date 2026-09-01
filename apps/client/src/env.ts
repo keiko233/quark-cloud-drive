@@ -20,6 +20,11 @@ export const SERVER_URL = env["SERVER_URL"] ?? "http://server:8080";
 // CDP proxy port on apps/server — the client connects to it directly.
 export const CDP_URL = env["CDP_URL"] ?? "http://server:9223";
 
+// Raw VNC endpoint on apps/server (x11vnc, port 5900). The client proxies it
+// to browsers via a WebSocket endpoint served next to the noVNC page.
+export const VNC_URL = env["VNC_URL"] ?? "http://server:5900";
+export const NOVNC_STATIC_DIR = env["NOVNC_STATIC_DIR"] ?? "/usr/share/novnc";
+
 export const RECONNECT_INTERVAL_MS = envInt("RECONNECT_INTERVAL_MS", 5000);
 
 export const LOG_LEVEL = (env["LOG_LEVEL"] ?? "info") as levellike;

@@ -19,8 +19,8 @@ Deno.test("KvStore: record and list tasks (newest first)", async () => {
   });
   const t2 = t1 + 1000;
   await store.recordTask({
-    key: "getFileList:/a",
-    label: "getFileList /a",
+    key: "listFile:/a",
+    label: "listFile /a",
     status: "error",
     startedAt: t2,
     endedAt: t2 + 50,
@@ -28,24 +28,11 @@ Deno.test("KvStore: record and list tasks (newest first)", async () => {
   });
 
   const tasks = await store.listTasks();
-  assertEquals(tasks[0].key, "getFileList:/a");
+  assertEquals(tasks[0].key, "listFile:/a");
   assertEquals(tasks[0].status, "error");
   assertEquals(tasks[0].error, "boom");
   const earlier = tasks.find((t) => t.key === "downloadFile:/a/b.txt");
   assertEquals(earlier?.status, "done");
-  store.close();
-});
-
-Deno.test("KvStore: record and list downloads", async () => {
-  const store = await freshStore();
-  await store.recordDownload({
-    name: "b.txt",
-    path: "/a/b.txt",
-    queuedAt: Date.now(),
-  });
-  const downloads = await store.listDownloads();
-  assertEquals(downloads[0].name, "b.txt");
-  assertEquals(downloads[0].path, "/a/b.txt");
   store.close();
 });
 

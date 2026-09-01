@@ -69,9 +69,9 @@ async function screenshotQRCode(
 }
 
 /** Queued public entry point. Returns the QR code PNG bytes. */
-export function getLoginQRCode(): Promise<Uint8Array> {
-  return getOperationQueue().run("getLoginQRCode", {}, async () => {
-    log.debug("getLoginQRCode: start");
+export function loginQRCode(): Promise<Uint8Array> {
+  return getOperationQueue().run("loginQRCode", {}, async () => {
+    log.debug("loginQRCode: start");
 
     const context = getBrowserContext();
     const homePage = findPageByUrl(context, QUARK_HOME_PAGE_URL);
@@ -79,7 +79,7 @@ export function getLoginQRCode(): Promise<Uint8Array> {
     if (!homePage) {
       const loginPage = findPageByUrl(context, QUARK_LOGIN_PAGE_URL);
       if (loginPage) {
-        log.debug("getLoginQRCode: using existing login page");
+        log.debug("loginQRCode: using existing login page");
         return await screenshotQRCode(loginPage, { refresh: true });
       }
       throw new Error(
@@ -90,7 +90,7 @@ export function getLoginQRCode(): Promise<Uint8Array> {
     await homePage.bringToFront();
 
     const { memberPage } = await getMemberPage(context, homePage);
-    log.debug("getLoginQRCode: capturing QR code");
+    log.debug("loginQRCode: capturing QR code");
     return await screenshotQRCode(memberPage, { refresh: true });
   });
 }

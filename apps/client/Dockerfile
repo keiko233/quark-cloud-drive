@@ -5,6 +5,11 @@
 # (`@quark/contract`) resolve via ./deno.json.
 FROM denoland/deno:2.2.8
 
+# noVNC UI assets served by the client at /vnc/ (the WebSocket→VNC proxy is
+# in-process Deno, so websockify/socat are not needed).
+RUN apt-get update && apt-get install -y --no-install-recommends novnc \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY ./deno.json /app/deno.json

@@ -265,7 +265,7 @@ export function normalizeFileListText(value: string | null): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
-export function getFileListItemKey(item: QuarkFileListItem): string {
+export function listFileItemKey(item: QuarkFileListItem): string {
   return [item.name, item.size, item.type, item.updatedAt].join("\u0000");
 }
 
@@ -281,7 +281,7 @@ export function parsePathSegments(path: string): string[] {
  * Queued streaming entry point. Yields `collecting` progress while the
  * virtual list is scrolled, then returns the full `{path, items}` list.
  */
-export function getFileList(
+export function listFile(
   path?: string,
 ): Promise<AsyncGenerator<FileListStreamEvent, QuarkFileList>> {
   const cacheKey = path ?? "";
@@ -294,10 +294,10 @@ export function getFileList(
   }
 
   return getOperationQueue().runStreaming(
-    "getFileList",
+    "listFile",
     { key: `fileList:${cacheKey}` },
     async function* () {
-      log.debug(`getFileList: path=${cacheKey || "root"}`);
+      log.debug(`listFile: path=${cacheKey || "root"}`);
 
       const homePage = getHomePage();
       await homePage.bringToFront();
@@ -313,9 +313,9 @@ export function getFileList(
         if (currentPath !== null) {
           const plan = planNavigation(currentPath, targetSegments);
           log.debug(
-            `getFileList: nav=[home] current=[${
-              currentPath.join("/")
-            }] target=[${targetSegments.join("/")}] action=${plan.action}`,
+            `listFile: nav=[home] current=[${currentPath.join("/")}] target=[${
+              targetSegments.join("/")
+            }] action=${plan.action}`,
           );
           if (plan.action === "none") {
             await waitForFileListReady(homePage);
@@ -333,13 +333,13 @@ export function getFileList(
           }
         } else {
           log.debug(
-            "getFileList: nav=[home] breadcrumb unreadable, full reset",
+            "listFile: nav=[home] breadcrumb unreadable, full reset",
           );
           await resetToHome(homePage);
           if (cacheKey) await navigateToPath(homePage, cacheKey);
         }
       } else {
-        log.debug(`getFileList: nav=[other], switching to home nav`);
+        log.debug(`listFile: nav=[other], switching to home nav`);
         await resetToHome(homePage);
         if (cacheKey) await navigateToPath(homePage, cacheKey);
       }
@@ -356,7 +356,7 @@ export function getFileList(
             page: homePage,
             scrollContainer: getScrollContainer(homePage),
             readVisible: () => readVisibleRows(homePage),
-            getKey: getFileListItemKey,
+            getKey: listFileItemKey,
             label: "fileList",
             onProgress: (seen) => progress.push(seen),
           });
@@ -379,9 +379,7 @@ export function getFileList(
 
       const pathSegments = await readBreadcrumbPath(homePage);
       log.debug(
-        `getFileList: ${items.length} items at path=[${
-          pathSegments.join("/")
-        }]`,
+        `listFile: ${items.length} items at path=[${pathSegments.join("/")}]`,
       );
       const result: QuarkFileList = { path: pathSegments, items };
       fileListCache.set(cacheKey, result);

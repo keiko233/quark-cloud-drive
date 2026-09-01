@@ -6,15 +6,15 @@ import { getOperationQueue } from "../browser/context.ts";
 import { loginStatusCache } from "../cache/caches.ts";
 
 /** Queued public entry point. Cached for 5s. */
-export function getLoginStatus(): Promise<{ loggedIn: boolean }> {
+export function loginStatus(): Promise<{ loggedIn: boolean }> {
   const cached = loginStatusCache.get("s");
   if (cached !== undefined) return Promise.resolve(cached);
 
   return getOperationQueue().run(
-    "getLoginStatus",
+    "loginStatus",
     { key: "loginStatus" },
     async () => {
-      log.debug("getLoginStatus: start");
+      log.debug("loginStatus: start");
 
       const context = getBrowserContext();
       const homePage = findPageByUrl(context, QUARK_HOME_PAGE_URL);
@@ -22,7 +22,7 @@ export function getLoginStatus(): Promise<{ loggedIn: boolean }> {
       if (!homePage) {
         const loginPage = findPageByUrl(context, QUARK_LOGIN_PAGE_URL);
         if (loginPage) {
-          log.debug("getLoginStatus: login page found, not logged in");
+          log.debug("loginStatus: login page found, not logged in");
           const result = { loggedIn: false };
           loginStatusCache.set("s", result);
           return result;
@@ -45,7 +45,7 @@ export function getLoginStatus(): Promise<{ loggedIn: boolean }> {
         .first();
 
       const loggedIn = await loginButton.count() === 0;
-      log.debug(`getLoginStatus: loggedIn=${loggedIn}`);
+      log.debug(`loginStatus: loggedIn=${loggedIn}`);
       const result = { loggedIn };
       loginStatusCache.set("s", result);
       return result;

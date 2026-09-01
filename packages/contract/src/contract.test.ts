@@ -71,13 +71,13 @@ Deno.test("clientContract exposes the full business surface", () => {
     "version",
     "queueStatus",
     "events",
-    "getLoginQRCode",
-    "getLoginStatus",
-    "getUserInfo",
-    "getFileList",
+    "loginQRCode",
+    "loginStatus",
+    "userInfo",
+    "listFile",
     "downloadFile",
-    "getDownloadStatus",
-    "setDownloadStatus",
+    "downloadStatus",
+    "updateDownloadStatus",
     "importShareLink",
   ];
   assertEquals(Object.keys(clientContract), keys);
@@ -90,14 +90,19 @@ Deno.test("clientContract exposes the full business surface", () => {
     path: "/download-file",
     inputStructure: "detailed",
   });
-  assertEquals(route(clientContract, "setDownloadStatus"), {
+  assertEquals(route(clientContract, "updateDownloadStatus"), {
     method: "POST",
-    path: "/set-download-status",
+    path: "/download-status",
     inputStructure: "detailed",
   });
-  assertEquals(route(clientContract, "getFileList"), {
+  assertEquals(route(clientContract, "downloadStatus"), {
     method: "GET",
-    path: "/get-file-list",
+    path: "/download-status",
+    inputStructure: "detailed",
+  });
+  assertEquals(route(clientContract, "listFile"), {
+    method: "GET",
+    path: "/list-file",
     inputStructure: "detailed",
   });
 });
@@ -105,10 +110,10 @@ Deno.test("clientContract exposes the full business surface", () => {
 Deno.test("long client operations carry detailed inputStructure", () => {
   for (
     const key of [
-      "getFileList",
+      "listFile",
       "downloadFile",
-      "getDownloadStatus",
-      "setDownloadStatus",
+      "downloadStatus",
+      "updateDownloadStatus",
       "importShareLink",
     ]
   ) {

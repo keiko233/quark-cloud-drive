@@ -13,9 +13,10 @@ function snakeImpl(s: string): string {
 // The snake() used by the MCP bridge must produce the documented tool names.
 Deno.test("MCP tool names: snake_case conversion", () => {
   assertEquals(snakeImpl("queueStatus"), "queue_status");
-  assertEquals(snakeImpl("getLoginQRCode"), "get_login_qr_code");
-  assertEquals(snakeImpl("getFileList"), "get_file_list");
-  assertEquals(snakeImpl("getDownloadStatus"), "get_download_status");
+  assertEquals(snakeImpl("loginQRCode"), "login_qr_code");
+  assertEquals(snakeImpl("listFile"), "list_file");
+  assertEquals(snakeImpl("downloadStatus"), "download_status");
+  assertEquals(snakeImpl("updateDownloadStatus"), "update_download_status");
   assertEquals(snakeImpl("importShareLink"), "import_share_link");
 });
 
@@ -38,13 +39,13 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
     [
       "version",
       "queueStatus",
-      "getLoginQRCode",
-      "getLoginStatus",
-      "getUserInfo",
-      "getFileList",
+      "loginQRCode",
+      "loginStatus",
+      "userInfo",
+      "listFile",
       "downloadFile",
-      "getDownloadStatus",
-      "setDownloadStatus",
+      "downloadStatus",
+      "updateDownloadStatus",
       "importShareLink",
     ],
   );
@@ -55,7 +56,13 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
 // The snake() export must match the standalone implementation (guards drift).
 Deno.test("MCP: snake export matches helper", () => {
   for (
-    const input of ["queueStatus", "getLoginQRCode", "downloadFile", "version"]
+    const input of [
+      "queueStatus",
+      "loginQRCode",
+      "downloadFile",
+      "version",
+      "updateDownloadStatus",
+    ]
   ) {
     assertEquals(snake(input), snakeImpl(input));
   }

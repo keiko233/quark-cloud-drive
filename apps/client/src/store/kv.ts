@@ -1,9 +1,8 @@
-// Deno KV-backed persistence for task history and download records.
+// Deno KV-backed persistence for task history and settings.
 //
 // Deno KV uses a local SQLite file (CLIENT_KV_PATH). Namespaces:
-//   ["tasks"]     — one row per operation {key,label,status,startedAt,endedAt,error?}
-//   ["downloads"] — download history {name,path,queuedAt,completedAt?}
-//   ["settings"]  — user-facing config (idle thresholds, etc.)
+//   ["tasks"]    — one row per operation {key,label,status,startedAt,endedAt,error?}
+//   ["settings"] — user-facing config (idle thresholds, etc.)
 
 import { CLIENT_KV_PATH } from "../env.ts";
 import { log } from "../logger.ts";
@@ -15,13 +14,6 @@ export interface TaskRecord {
   startedAt: number;
   endedAt?: number;
   error?: string;
-}
-
-export interface DownloadRecord {
-  name: string;
-  path: string;
-  queuedAt: number;
-  alreadyQueued?: boolean;
 }
 
 export class KvStore {
@@ -69,25 +61,6 @@ export class KvStore {
     const kv = this.ensure();
     const records: TaskRecord[] = [];
     const it = kv.list<TaskRecord>({ prefix: ["tasks"] });
-    for await (const entry of it) {
-      records.push(entry.value);
-    }
-    return records.slice(-limit).reverse();
-  }
-
-  // ── downloads ──────────────────────────────────────────────────────────────
-
-  async recordDownload(record: DownloadRecord): Promise<void> {
-    await this.ensure().set(
-      ["downloads", record.queuedAt, record.name],
-      record,
-    );
-  }
-
-  async listDownloads(limit = 100): Promise<DownloadRecord[]> {
-    const kv = this.ensure();
-    const records: DownloadRecord[] = [];
-    const it = kv.list<DownloadRecord>({ prefix: ["downloads"] });
     for await (const entry of it) {
       records.push(entry.value);
     }

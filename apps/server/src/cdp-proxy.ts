@@ -323,7 +323,7 @@ async function proxyWs(
       while (true) {
         const frame = await readFrame(src);
         if (!frame) {
-          log.debug(`[cdp-proxy] ${dir}relay: source EOF — closing both`);
+          log.info(`[cdp-proxy] ${dir}relay: source EOF — closing both`);
           break;
         }
         const { opcode, payload } = frame;

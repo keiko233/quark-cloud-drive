@@ -28,8 +28,34 @@ export const WINE_USER = env["WINE_USER"] ?? "wineuser";
 export const WINE_BIN = env["WINE_BIN"] ?? "/opt/deepin-wine8-stable/bin/wine";
 export const WINESERVER_BIN = env["WINESERVER_BIN"] ??
   "/opt/deepin-wine8-stable/bin/wineserver";
-export const LAUNCH_SCRIPT = env["LAUNCH_SCRIPT"] ??
-  "/usr/local/bin/launch-quark.sh";
+
+/**
+ * Launch script resolution: an explicit LAUNCH_SCRIPT wins; otherwise the
+ * first existing candidate is used so bare dev runs find the repo's
+ * `apps/server/scripts/launch-quark.sh` (the container has it installed at
+ * /usr/local/bin/launch-quark.sh).
+ */
+function resolveLaunchScript(): string {
+  const override = env["LAUNCH_SCRIPT"];
+  if (override) return override;
+  for (
+    const candidate of [
+      "/usr/local/bin/launch-quark.sh",
+      "./scripts/launch-quark.sh",
+      "apps/server/scripts/launch-quark.sh",
+      "/opt/quark-server/apps/server/scripts/launch-quark.sh",
+    ]
+  ) {
+    try {
+      if (Deno.statSync(candidate).isFile) return candidate;
+    } catch {
+      // not present — try the next candidate
+    }
+  }
+  return "/usr/local/bin/launch-quark.sh";
+}
+
+export const LAUNCH_SCRIPT = resolveLaunchScript();
 
 export const QUARK_WINDOW_TITLE = env["QUARK_WINDOW_TITLE"] ?? "夸克网盘";
 export const QUARK_PROCESS_PATTERNS = (env["QUARK_PROCESS_PATTERNS"] ?? "")

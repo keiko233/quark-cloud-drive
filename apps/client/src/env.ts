@@ -15,14 +15,16 @@ export const SERVER_PORT = envInt("SERVER_PORT", 3000);
 
 // Base URL of apps/server (the process manager). The client talks to it via
 // the shared serverContract.
-export const SERVER_URL = env["SERVER_URL"] ?? "http://server:8080";
+// Defaults target a co-located server (local dev); the docker-compose stack
+// overrides these with the compose-network hostname `server`.
+export const SERVER_URL = env["SERVER_URL"] ?? "http://127.0.0.1:8080";
 
 // CDP proxy port on apps/server — the client connects to it directly.
-export const CDP_URL = env["CDP_URL"] ?? "http://server:9223";
+export const CDP_URL = env["CDP_URL"] ?? "http://127.0.0.1:9223";
 
 // Raw VNC endpoint on apps/server (x11vnc, port 5900). The client proxies it
 // to browsers via a WebSocket endpoint served next to the noVNC page.
-export const VNC_URL = env["VNC_URL"] ?? "http://server:5900";
+export const VNC_URL = env["VNC_URL"] ?? "http://127.0.0.1:5900";
 export const NOVNC_STATIC_DIR = env["NOVNC_STATIC_DIR"] ?? "/usr/share/novnc";
 
 export const RECONNECT_INTERVAL_MS = envInt("RECONNECT_INTERVAL_MS", 5000);

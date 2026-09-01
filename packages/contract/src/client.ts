@@ -1,5 +1,6 @@
 import { eventIterator, oc } from "@orpc/contract";
 import { z } from "zod";
+import { sharedErrorMap } from "./errors.ts";
 import {
   BrowserQueueStatusSchema,
   ClientEventSchema,
@@ -23,7 +24,7 @@ import {
  * Short queries stay plain JSON. `/events` is a global event bus (queue +
  * process + monitor + operation events).
  */
-export const clientContract = oc.router({
+export const clientContract = oc.errors(sharedErrorMap).router({
   version: oc.route({
     method: "GET",
     path: "/version",

@@ -4,6 +4,7 @@ import {
   ServerEventSchema,
   ServerStatusSchema,
 } from "./schemas.ts";
+import { sharedErrorMap } from "./errors.ts";
 
 /**
  * apps/server contract — the thin process manager surface.
@@ -14,7 +15,7 @@ import {
  *
  * apps/client consumes this via a typed oRPC client (see apps/client).
  */
-export const serverContract = oc.router({
+export const serverContract = oc.errors(sharedErrorMap).router({
   healthz: oc.route({
     method: "GET",
     path: "/healthz",

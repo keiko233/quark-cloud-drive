@@ -225,6 +225,14 @@ export const ImportShareLinkStreamEventSchema = z.union([
   z.object({ type: z.literal("error"), message: z.string() }),
 ]);
 
+export type DownloadFileStreamEvent = z.infer<
+  typeof DownloadFileStreamEventSchema
+>;
+export type FileListStreamEvent = z.infer<typeof FileListStreamEventSchema>;
+export type ImportShareLinkStreamEvent = z.infer<
+  typeof ImportShareLinkStreamEventSchema
+>;
+
 // ─── Client events (global SSE from apps/client) ─────────────────────────────
 
 export const ClientEventSchema = z.union([
@@ -241,7 +249,7 @@ export const ClientEventSchema = z.union([
   }),
   z.object({
     type: z.literal("monitor"),
-    decision: z.enum(["minimize", "stop", "wake"]),
+    decision: z.enum(["minimize", "stop", "restore"]),
     reason: z.string(),
   }),
   z.object({

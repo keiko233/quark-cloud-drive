@@ -3,10 +3,14 @@
   "specifiers": {
     "jsr:@libs/logger@^3.1.10": "3.1.10",
     "jsr:@std/assert@1": "1.0.19",
+    "jsr:@std/async@^1.0.11": "1.5.0",
+    "jsr:@std/data-structures@^1.1.1": "1.1.2",
     "jsr:@std/dotenv@~0.225.3": "0.225.7",
     "jsr:@std/fmt@^1.0.9": "1.0.10",
     "jsr:@std/internal@^1.0.12": "1.0.13",
+    "npm:@orpc/client@^1.14.2": "1.14.5",
     "npm:@orpc/contract@^1.14.2": "1.14.5",
+    "npm:@orpc/openapi-client@^1.14.2": "1.14.5",
     "npm:@orpc/openapi@^1.14.2": "1.14.5",
     "npm:@orpc/server@^1.14.2": "1.14.5",
     "npm:@orpc/zod@^1.14.2": "1.14.5_@orpc+contract@1.14.5_@orpc+server@1.14.5_zod@4.4.3",
@@ -26,6 +30,15 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/async@1.5.0": {
+      "integrity": "4c1f22d287a17ad7d8643b1952bc5a4d21e5d8b68dc8c20d8268eecc69096e82",
+      "dependencies": [
+        "jsr:@std/data-structures"
+      ]
+    },
+    "@std/data-structures@1.1.2": {
+      "integrity": "2471377c9e0051f9ec34e57d0ebd0ad133a5a889677446ec6ba9938e4e102918"
     },
     "@std/dotenv@0.225.7": {
       "integrity": "11d8db03ca4ad5aba9eba809f2e8058b2a4f320b7b09fea4b360e162928329e3"
@@ -241,6 +254,12 @@
           "jsr:@std/assert@1",
           "jsr:@std/async@^1.0.11",
           "jsr:@std/dotenv@~0.225.3",
+          "npm:@orpc/client@^1.14.2",
+          "npm:@orpc/contract@^1.14.2",
+          "npm:@orpc/openapi-client@^1.14.2",
+          "npm:@orpc/openapi@^1.14.2",
+          "npm:@orpc/server@^1.14.2",
+          "npm:@orpc/zod@^1.14.2",
           "npm:hono@^4.12.18",
           "npm:playwright@^1.59.1",
           "npm:zod@^4.4.3"

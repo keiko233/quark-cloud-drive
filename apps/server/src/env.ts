@@ -1,7 +1,8 @@
 import { load } from "@std/dotenv";
 import type { levellike } from "@libs/logger";
 
-const env = await load({ export: false });
+// Process env wins; .env fills the gaps.
+const env = { ...(await load({ export: false })), ...Deno.env.toObject() };
 
 function envInt(name: string, def: number): number {
   const v = env[name];

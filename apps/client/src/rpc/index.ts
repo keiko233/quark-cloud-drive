@@ -9,7 +9,6 @@ import { SERVER_PORT } from "../env.ts";
 import { log } from "../logger.ts";
 import { clientRouter } from "./router.ts";
 import { handleMcpRequest } from "./mcp.ts";
-import { managerPassthrough } from "./manager-passthrough.ts";
 import { vncApp } from "./vnc.ts";
 import { devtoolsApp } from "./devtools.ts";
 import { kvStore } from "../store/kv.ts";
@@ -52,9 +51,6 @@ app.get("/history", async (c) => {
 
 // MCP over Streamable HTTP (stateless WebStandard transport).
 app.all("/mcp", (c) => handleMcpRequest(c.req.raw));
-
-// Legacy manager passthrough (flat /manager-* names, forwarded to apps/server).
-app.route("/", managerPassthrough);
 
 // noVNC page + WebSocket→VNC proxy (server only exposes the raw VNC port).
 app.route("/", vncApp);

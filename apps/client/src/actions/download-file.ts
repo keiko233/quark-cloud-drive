@@ -19,6 +19,7 @@ import {
   waitForFileListReady,
 } from "./get-file-list.ts";
 import { readDownloadStatusRaw } from "./download-status.ts";
+import { kvStore } from "../store/kv.ts";
 
 function getTargetFromPath(
   path: string,
@@ -109,6 +110,12 @@ export function downloadFile(
         log.debug(
           `downloadFile: "${target.fileName}" already in transport list, skipping click`,
         );
+        await kvStore.recordDownload({
+          name: target.fileName,
+          path,
+          queuedAt: Date.now(),
+          alreadyQueued: true,
+        });
         return { name: target.fileName, alreadyQueued: true };
       }
 
@@ -117,6 +124,11 @@ export function downloadFile(
       await clickDownloadButton(row);
 
       log.debug(`downloadFile: queued "${target.fileName}"`);
+      await kvStore.recordDownload({
+        name: target.fileName,
+        path,
+        queuedAt: Date.now(),
+      });
       const result: QuarkDownloadFileResult = { name: target.fileName };
       downloadFileCache.set(path, result);
       downloadStatusCache.clear();

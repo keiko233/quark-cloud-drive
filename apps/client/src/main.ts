@@ -5,6 +5,11 @@ import { CDP_URL, RECONNECT_INTERVAL_MS, SERVER_URL } from "./env.ts";
 import { startServer } from "./rpc/index.ts";
 import { connect } from "./browser/connect.ts";
 import { sleeper } from "./rpc/runtime.ts";
+import { kvStore } from "./store/kv.ts";
+import { attachStoreHooks } from "./store/hooks.ts";
+
+await kvStore.open();
+attachStoreHooks();
 
 log.debug("Quark Remote Client started");
 log.debug(`CDP URL: ${CDP_URL}`);

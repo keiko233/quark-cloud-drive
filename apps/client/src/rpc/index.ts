@@ -9,6 +9,7 @@ import { SERVER_PORT } from "../env.ts";
 import { log } from "../logger.ts";
 import { clientRouter } from "./router.ts";
 import { handleMcpRequest } from "./mcp.ts";
+import { kvStore } from "../store/kv.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
   plugins: [
@@ -38,6 +39,14 @@ const handler = new OpenAPIHandler(clientRouter, {
 const app = new Hono();
 
 app.get("/healthz", (c) => c.json({ ok: true }));
+
+// Internal ops: recently recorded task + download history (not part of the
+// oRPC contract — read-only convenience for debugging/ops).
+app.get("/history", async (c) => {
+  const tasks = await kvStore.listTasks(50);
+  const downloads = await kvStore.listDownloads(50);
+  return c.json({ tasks, downloads });
+});
 
 // MCP over Streamable HTTP (stateless WebStandard transport).
 app.all("/mcp", (c) => handleMcpRequest(c.req.raw));

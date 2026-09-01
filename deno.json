@@ -10,7 +10,7 @@
     "fmt": "deno fmt",
     "lint": "deno lint",
     "check": "deno fmt --check && deno lint && deno check apps/server/src/main.ts apps/client/src/main.ts",
-    "test": "deno test -A apps packages",
+    "test": "deno test -A --unstable-kv apps packages",
     "dev:client": "deno task --cwd apps/client dev",
     "dev:server": "deno task --cwd apps/server dev"
   }

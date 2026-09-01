@@ -56,7 +56,12 @@ interface WaitingTask<T> {
 
 interface QueueEvents {
   change: { status: BrowserQueueStatus };
-  operation: { key: string | undefined; phase: "started" | "done" | "error" };
+  operation: {
+    key: string | undefined;
+    label: string;
+    phase: "started" | "done" | "error";
+    startedAt: number;
+  };
 }
 
 // ── minimal async channel ────────────────────────────────────────────────────
@@ -258,12 +263,15 @@ export class OperationQueue {
     }
     const task = this.waiters.splice(bestIdx, 1)[0];
 
-    this.running = { label: task.label, startedAt: Date.now() };
+    const startedAt = Date.now();
+    this.running = { label: task.label, startedAt };
     this.publish();
     log.trace(`queue start: ${task.label}`);
     this.events.publish("operation", {
       key: task.opts.key,
+      label: task.label,
       phase: "started",
+      startedAt,
     });
 
     const timeoutMs = task.opts.timeoutMs ?? QUEUE_OPERATION_TIMEOUT_MS;
@@ -281,7 +289,9 @@ export class OperationQueue {
         task.reject(abortError);
         this.events.publish("operation", {
           key: task.opts.key,
+          label: task.label,
           phase: "error",
+          startedAt: startedAt,
         });
       }
     };
@@ -298,7 +308,9 @@ export class OperationQueue {
             task.resolve(value);
             this.events.publish("operation", {
               key: task.opts.key,
+              label: task.label,
               phase: "done",
+              startedAt: startedAt,
             });
           }
         },
@@ -308,7 +320,9 @@ export class OperationQueue {
             task.reject(aborted ? abortError : error);
             this.events.publish("operation", {
               key: task.opts.key,
+              label: task.label,
               phase: "error",
+              startedAt: startedAt,
             });
           }
         },

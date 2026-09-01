@@ -64,7 +64,7 @@ RUN apt-get update && \
         libxinerama1 \
         libxrandr2 \
         libxrender1 \
-        libxxfvm86m1 \
+        libxxf86vm1 \
     && locale-gen zh_CN.UTF-8 \
     && curl -fL "$DEEPIN_WINE8_URL" -o /tmp/deepin-wine8.deb \
     && dpkg-deb -x /tmp/deepin-wine8.deb / \
@@ -145,8 +145,8 @@ RUN --mount=type=bind,source=apps/server/wineprefix.tar.zst,target=/tmp/winepref
     chown -R wineuser:wineuser /opt/spark-bottle && \
     rm -rf /tmp/quark-spark.deb /tmp/quark-spark
 
-COPY ./scripts/run-quark.sh /usr/local/bin/run-quark.sh
-COPY ./scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
+COPY ./apps/server/scripts/run-quark.sh /usr/local/bin/run-quark.sh
+COPY ./apps/server/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
 
 # The manager source + workspace. The image is run with cwd=/opt/quark-server.
 COPY ./deno.json /opt/quark-server/deno.json

@@ -1,2 +1,5 @@
 // apps/client entrypoint — orchestration + business + monitoring (see docs/refactor-design.md).
-console.log("quark-client placeholder");
+import { clientContract } from "@quark/contract/client";
+
+const procedures = Object.keys(clientContract);
+console.log(`quark-client placeholder (contract: ${procedures.join(", ")})`);

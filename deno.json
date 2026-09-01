@@ -1,14 +1,5 @@
 {
   "workspace": ["./apps/*", "./packages/*"],
-  "catalog": {
-    "@orpc/contract": "^1.14.2",
-    "@orpc/openapi": "^1.14.2",
-    "@orpc/server": "^1.14.2",
-    "@orpc/zod": "^1.14.2",
-    "hono": "^4.12.18",
-    "playwright": "^1.59.1",
-    "zod": "^4.4.3"
-  },
   "fmt": {
     "exclude": ["quark-cdp-client", "quark-docker"]
   },

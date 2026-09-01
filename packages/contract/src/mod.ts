@@ -1,3 +1,6 @@
 // Shared contract + schemas for quark-cloud-drive.
-// This package is the single source of truth for the RPC surface of both
-// apps/server and apps/client.
+// Single source of truth for the RPC surface of apps/server and apps/client.
+
+export * from "./schemas.ts";
+export * from "./server.ts";
+export * from "./client.ts";

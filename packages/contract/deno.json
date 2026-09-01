@@ -8,8 +8,13 @@
     "./client": "./src/client.ts"
   },
   "imports": {
-    "@orpc/contract": "catalog:",
+    "@orpc/contract": "npm:@orpc/contract@^1.14.2",
     "@std/assert": "jsr:@std/assert@1",
-    "zod": "catalog:"
+    "zod": "npm:zod@^4.4.3"
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-slow-types"]
+    }
   }
 }

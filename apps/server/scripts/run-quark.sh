@@ -44,6 +44,16 @@ fi
 # Auto-detect VAAPI driver for Intel GPU hardware video acceleration.
 echo "--- DRI devices ---"
 ls /dev/dri/ 2>/dev/null || echo "  (none)"
+# /dev/dri gids are host-specific (e.g. render=991 on this box) and the
+# non-root wineuser is in neither group, so the DRI nodes are unreadable to it.
+# Xorg (root) still gets hardware glamor/iris, but the Chromium GPU process runs
+# as wineuser: wined3d's D3D11→GL and VAAPI hardware decode both need to open
+# renderD128, so without this ANGLE silently falls back to SwiftShader (software
+# rendering, intel_gpu_top shows 0%) and video decode to software. Chmod at
+# startup while still root so the runtime render node is usable by wineuser.
+if [ "$(id -u)" = "0" ]; then
+    chmod a+rw /dev/dri/card[0-9]* /dev/dri/renderD* 2>/dev/null || true
+fi
 if [ -z "${LIBVA_DRIVER_NAME:-}" ]; then
     if [ -f /usr/lib/x86_64-linux-gnu/dri/iHD_drv_video.so ]; then
         export LIBVA_DRIVER_NAME=iHD    # Gen8+ (Broadwell and newer)
@@ -230,7 +240,17 @@ echo "Starting Quark: $EXE"
 # Without a GPU, fall back to software rendering.
 if [ -e /dev/dri/renderD128 ] || [ -e /dev/dri/card0 ]; then
     echo "GPU detected via DRI; enabling hardware acceleration for Chromium."
-    _gpu_flags=""
+    # Chromium's GPU blocklist disables GPU compositing when running under Wine
+    # (the wined3d-reported adapter is unknown to the blocklist), and ANGLE's
+    # default backend selection ends up on SwiftShader. Override both:
+    #   --ignore-gpu-blocklist  → don't force software compositing
+    #   --use-angle=d3d11       → ANGLE renders through wined3d's D3D11 (which
+    #                             maps to Mesa GL on the real Intel GPU) instead
+    #                             of the bundled SwiftShader Vulkan fallback.
+    # Without these, gpu_compositing/webgl/video_decode all report software and
+    # intel_gpu_top stays at 0%.
+    _gpu_flags="--ignore-gpu-blocklist
+    --use-angle=d3d11"
 else
     echo "No DRI device found; disabling Chromium GPU acceleration."
     _gpu_flags="--disable-gpu

@@ -1,14 +1,14 @@
 # quark-cloud-drive
 
-Monorepo for automating Quark Cloud Drive (夸克网盘). It runs the desktop
-client inside Docker under Wine/Electron with Xorg + VNC, and drives it
-headlessly over the Chrome DevTools Protocol (CDP) from a Deno service. A Deno
-2 workspace with two apps and one shared contract package:
+Monorepo for automating Quark Cloud Drive (夸克网盘). It runs the desktop client
+inside Docker under Wine/Electron with Xorg + VNC, and drives it headlessly over
+the Chrome DevTools Protocol (CDP) from a Deno service. A Deno 2 workspace with
+two apps and one shared contract package:
 
 - **`apps/server`** — thin process manager + CDP proxy for the Wine/Electron
-  Quark instance (Xorg + x11vnc). Exposes process lifecycle (`/start`,
-  `/stop`, `/restart`), window control (`/minimize`, `/restore`), status, and a
-  live `/events` SSE stream. There is **no** idle/sleep policy here — that's the
+  Quark instance (Xorg + x11vnc). Exposes process lifecycle (`/start`, `/stop`,
+  `/restart`), window control (`/minimize`, `/restore`), status, and a live
+  `/events` SSE stream. There is **no** idle/sleep policy here — that's the
   client's job.
 - **`apps/client`** — the remote client. Connects to the browser over CDP via
   Playwright, exposes a typed HTTP API **and** an MCP server, serves noVNC
@@ -51,12 +51,13 @@ docker compose up --build
 
 Services:
 
-| Container      | What it runs                       | Host mapping                                |
-| -------------- | ---------------------------------- | ------------------------------------------- |
-| `quark-server` | Quark under Wine + manager + CDP   | VNC `:5900`, CDP proxy `:9223`, manager `:8080` |
-| `quark-client` | Deno remote client (API/MCP/UI)    | HTTP `:3000`                                |
+| Container      | What it runs                     | Host mapping                                    |
+| -------------- | -------------------------------- | ----------------------------------------------- |
+| `quark-server` | Quark under Wine + manager + CDP | VNC `:5900`, CDP proxy `:9223`, manager `:8080` |
+| `quark-client` | Deno remote client (API/MCP/UI)  | HTTP `:3000`                                    |
 
 Notes:
+
 - The `./wine-data-spark` volume is the default runtime data dir — the current
   installer crashes before creating a visible Electron window, so the app is
   driven from its Spark-bottle profile. Downloads land in `./downloads`.

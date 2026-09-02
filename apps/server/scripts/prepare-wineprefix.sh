@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT_DIR="$(cd "$SERVER_DIR/.." && pwd)"
+ROOT_DIR="$(cd "$SERVER_DIR/../.." && pwd)"
 IMAGE="${IMAGE:-quark-docker:install-debug}"
 CONTAINER="${CONTAINER:-quark-install-debug}"
 VNC_PORT="${VNC_PORT:-5900}"

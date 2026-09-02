@@ -15,6 +15,9 @@ docker_cmd=(sudo docker)
 cd "$ROOT_DIR"
 mkdir -p "$OUT_DIR"
 
+echo "Ensuring Spark deb dependencies are available..."
+"$SERVER_DIR/scripts/download-debs.sh"
+
 echo "Building installer/VNC image: $IMAGE"
 "${docker_cmd[@]}" build -f "$SERVER_DIR/Dockerfile" --target install-debug -t "$IMAGE" .
 

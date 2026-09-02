@@ -36,7 +36,33 @@ jobs:
         run: deno task download-client
         working-directory: apps/server
 
+      - name: Restore Spark deb cache
+        id: deb-cache
+        uses: actions/cache@v4
+        with:
+          path: apps/server/.deb-cache
+          key: spark-debs-${{ hashFiles('apps/server/scripts/download-debs.sh') }}
+
+      - name: Download Spark debs
+        run: ./scripts/download-debs.sh
+        working-directory: apps/server
+
+      - name: Compute Wine prefix cache key
+        id: wp-key
+        run: |
+          installer_sha="$(sha256sum apps/server/installer.exe | awk '{print $1}' | cut -c1-16)"
+          deepin_sha="$(sha256sum apps/server/.deb-cache/deepin-wine8.deb | awk '{print $1}' | cut -c1-16)"
+          echo "key=wineprefix-$installer_sha-$deepin_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Restore Wine prefix cache
+        id: wp-cache
+        uses: actions/cache@v4
+        with:
+          path: apps/server/wineprefix.tar.zst
+          key: ${{ steps.wp-key.outputs.key }}
+
       - name: Prepare Wine prefix
+        if: steps.wp-cache.outputs.cache-hit != 'true'
         run: ./scripts/prepare-wineprefix.sh
         working-directory: apps/server
 

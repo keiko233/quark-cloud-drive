@@ -24,14 +24,13 @@ ENV RDP_SERVER=no \
     WINEARCH=win64 \
     WINEDEBUG=-all \
     DISPLAY=:0 \
-    DEEPIN_WINE8_URL=https://d.spark-app.store/amd64-store/depends/deepin-wine8/deepin-wine8-stable_8.16deepin41_spark1_amd64.deb \
-    SPARK_QUARK_URL=https://d.spark-app.store/store/network/cn.quarkclouddrive.spark/cn.quarkclouddrive.spark_3.2.6spark4_all.deb \
     WINE_BIN=/opt/deepin-wine8-stable/bin/wine \
     WINESERVER_BIN=/opt/deepin-wine8-stable/bin/wineserver
 
 # WINEDLLOVERRIDES is not set globally because the installer may need mscoree.
 # Suppress Mono/Gecko only during wineboot in the prepare script.
-RUN apt-get update && \
+RUN --mount=type=bind,source=apps/server/.deb-cache/deepin-wine8.deb,target=/tmp/deepin-wine8.deb \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         fonts-wqy-microhei \
         fonts-wqy-zenhei \
@@ -66,9 +65,7 @@ RUN apt-get update && \
         libxrender1 \
         libxxf86vm1 \
     && locale-gen zh_CN.UTF-8 \
-    && curl -fL "$DEEPIN_WINE8_URL" -o /tmp/deepin-wine8.deb \
     && dpkg-deb -x /tmp/deepin-wine8.deb / \
-    && rm -f /tmp/deepin-wine8.deb \
     && rm -rf /var/lib/apt/lists/* \
     && (getent group 1000 >/dev/null || groupadd -g 1000 wineuser) \
     && (id -u wineuser >/dev/null 2>&1 || useradd -u 1000 -g 1000 -m -s /bin/bash wineuser) \
@@ -128,10 +125,10 @@ CMD rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 && \
 FROM base
 
 RUN --mount=type=bind,source=apps/server/wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
+    --mount=type=bind,source=apps/server/.deb-cache/quark-spark.deb,target=/tmp/quark-spark.deb \
     rm -rf /opt/wineprefix && \
     mkdir -p /opt/wineprefix && \
     tar --zstd -xf /tmp/wineprefix.tar.zst -C /opt/wineprefix && \
-    curl -fL "$SPARK_QUARK_URL" -o /tmp/quark-spark.deb && \
     mkdir -p /tmp/quark-spark /opt/spark-bottle && \
     dpkg-deb -x /tmp/quark-spark.deb /tmp/quark-spark && \
     7z x -y -o/opt/spark-bottle /tmp/quark-spark/opt/apps/cn.quarkclouddrive.spark/files/files.7z; \
@@ -143,7 +140,7 @@ RUN --mount=type=bind,source=apps/server/wineprefix.tar.zst,target=/tmp/winepref
     ln -sfn / /opt/spark-bottle/dosdevices/z: && \
     chown -R wineuser:wineuser /opt/wineprefix && \
     chown -R wineuser:wineuser /opt/spark-bottle && \
-    rm -rf /tmp/quark-spark.deb /tmp/quark-spark
+    rm -rf /tmp/quark-spark
 
 COPY ./apps/server/scripts/run-quark.sh /usr/local/bin/run-quark.sh
 COPY ./apps/server/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh

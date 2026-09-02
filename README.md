@@ -12,8 +12,8 @@ apps and one shared contract package:
   client's job.
 - **`apps/client`** — the remote client. Connects to the browser over CDP via
   Playwright, exposes a typed HTTP API **and** an MCP server, serves noVNC
-  (`/vnc`) and Chrome DevTools (`/devtools`) pages, owns the idle policy, and
-  persists task/download history in Deno KV.
+  (`/vnc`) and Chrome DevTools (`/devtools`) pages, owns the idle policy and
+  guard, and persists task history plus runtime config/status in Deno KV.
 - **`packages/contract`** — the shared oRPC contract (zod schemas) both apps
   build on, so RPC, OpenAPI, and MCP all come from one definition.
 
@@ -113,9 +113,10 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
 - Server (`apps/server`): `QUARK_API_PORT` (8080), `QUARK_CDP_PORT` (9222),
   `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`, `LAUNCH_SCRIPT`, `WINE_*`.
 - Client (`apps/client`): `SERVER_URL`, `CDP_URL`, `VNC_URL`, `SERVER_PORT`
-  (3000), `CLIENT_IDLE_MINIMIZE_AFTER_MS` / `CLIENT_IDLE_STOP_AFTER_MS` (idle
-  policy), `QUEUE_*`, `CLIENT_KV_PATH`, `LOG_LEVEL`. For host-side client
-  development, use `SERVER_URL=http://127.0.0.1:8080` and
+  (3000), `CLIENT_IDLE_*` (first-run monitor defaults), `QUEUE_*`,
+  `CLIENT_KV_PATH`, `LOG_LEVEL`. After first boot, `/config` in Deno KV is
+  authoritative and can be changed without restarting the client. For host-side
+  client development, use `SERVER_URL=http://127.0.0.1:8080` and
   `CDP_URL=http://127.0.0.1:9223`.
 
 ## API surfaces
@@ -124,10 +125,13 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
   `/openapi.json`; manager routes `/status`, `/start`, `/stop`, `/restart`,
   `/minimize`, `/restore`, and `/events` (SSE of process state + CDP activity).
 - **Client** (`http://localhost:3000`) — OpenAPI docs at `/`, spec at
-  `/spec.json`. Business endpoints: `/version`, `/queue-status`, `/events`,
-  `/login-qrcode`, `/login-status`, `/user-info`, `/list-file`,
-  `/download-file`, `/download-status`, `/import-share-link`. The manager
-  surface is re-exposed under `/manager/*` (forwarded to the server contract).
+  `/spec.json`. Runtime endpoints are `GET/PATCH /config` and `GET /status`.
+  `/status` reports process state, login renderer state, download count, queue
+  pressure, a 0–100 readiness score, monitor timing/decision, and guard state.
+  Business endpoints: `/version`, `/queue-status`, `/events`, `/login-qrcode`,
+  `/login-status`, `/user-info`, `/list-file`, `/download-file`,
+  `/download-status`, `/import-share-link`. The manager surface is re-exposed
+  under `/manager/*` (forwarded to the server contract).
 - **MCP** — `/mcp` exposes the client contract (including `manager_*`) as MCP
   tools over Streamable HTTP.
 - **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`.
@@ -140,6 +144,19 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
   file row.
 - **History** — `/history` returns recent task/download records from Deno KV
   (ops convenience, not part of the contract).
+
+### Runtime policy
+
+The monitor performs a cheap process probe and login-renderer probe at
+`checkIntervalMs`. It does not open the transport UI on every tick; the
+running-task count is refreshed at `downloadProbeIntervalMs` and cached in the
+status snapshot. The default download probe interval is 5 minutes and the
+default total idle stop threshold is 15 minutes. `minimizeAfterMs` and
+`stopAfterMs` retain the two-stage idle policy (`0` disables a stage).
+`stopWhenLoggedOut` optionally stops Quark as soon as
+`renderer/login-window.html` is present. Protected business operations are
+denied while Quark is `starting`/stopped or when their name is in
+`requireLoginFor`; start, login status, and QR-code operations remain available.
 
 ## Checks
 

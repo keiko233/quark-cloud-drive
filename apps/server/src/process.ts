@@ -140,6 +140,9 @@ export class ProcessManager {
     if (await this.isProcAlive()) {
       // If Chromium is serving but we think we're minimized, restore the
       // window (idempotent). Otherwise no-op.
+      if (this.state === "starting" && !(await this.chromiumListening())) {
+        return this.status();
+      }
       if (this.state === "running_minimized") {
         try {
           await this.restore();
@@ -172,12 +175,13 @@ export class ProcessManager {
       if (
         this.state !== "running_visible" && this.state !== "running_minimized"
       ) {
-        this.setState("running_visible");
+        this.setState("starting");
       }
       return this.status();
     }
 
     log.info("starting Quark via launch script");
+    this.setState("starting");
     const cmd = this.buildLaunchCommand();
     try {
       this.proc = new Deno.Command(cmd.command, {
@@ -207,7 +211,6 @@ export class ProcessManager {
     this.startedAt = Date.now();
     this.lastLaunchAt = Date.now();
     this.counts.start++;
-    this.setState("running_visible");
     log.info(`Quark started (pid=${this.proc.pid} pgid=${this.pgid})`);
     return this.status();
   }
@@ -307,13 +310,29 @@ export class ProcessManager {
   }
 
   async status(): Promise<ServerStatus> {
-    const alive = await this.isProcAlive();
+    // `alive` is the externally useful readiness signal, not merely the
+    // launcher PID. The launcher may remain alive (or may have exited early)
+    // while Chromium/CDP is unavailable.
+    const alive = await this.chromiumListening();
     // Self-heal stale state in both directions against the authoritative
     // liveness signal (but don't rewrite internal state from a mere /status
     // call — leave the write to the lifecycle methods / idle client).
     let reported: ProcessState = this.state;
     if (alive && this.state === "stopped") reported = "running_visible";
-    else if (!alive && this.state !== "stopped") reported = "stopped";
+    else if (
+      alive && this.state === "starting"
+    ) {
+      // The launcher can exit before Chromium is ready. Promote the explicit
+      // startup phase once CDP is accepting connections so callers can safely
+      // distinguish a booting instance from a usable one.
+      this.setState("running_visible");
+      reported = "running_visible";
+    } else if (
+      !alive && this.lastLaunchAt !== null &&
+      Date.now() - this.lastLaunchAt < START_GRACE_MS
+    ) {
+      reported = "starting";
+    } else if (!alive && this.state !== "stopped") reported = "stopped";
 
     return {
       state: reported,

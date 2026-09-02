@@ -2,12 +2,17 @@ import { chromium } from "playwright";
 import { log } from "../logger.ts";
 import { CDP_URL } from "../env.ts";
 import { setBrowser } from "./context.ts";
-import { ensureQuarkAwake } from "../monitor/wake.ts";
+import { ensureQuarkAwake, isAutoWakeBlocked } from "../monitor/wake.ts";
 
 export async function connect(): Promise<void> {
   // Always wake before connecting: if the server idle-stopped Quark while we
   // were disconnected, /start brings it back up and we wait for the CDP port
   // to come online. Idempotent if Quark is already running.
+  if (await isAutoWakeBlocked()) {
+    throw new Error(
+      "automatic wake is blocked because the monitor stopped Quark while logged out",
+    );
+  }
   log.debug("ensuring Quark is awake before connect");
   await ensureQuarkAwake();
 

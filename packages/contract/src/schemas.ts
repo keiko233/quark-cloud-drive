@@ -4,10 +4,11 @@ import { z } from "zod";
 
 export const ProcessStateSchema = z.enum([
   "stopped",
+  "starting",
   "running_visible",
   "running_minimized",
 ]).describe(
-  "Process state of Quark as tracked by apps/server: `stopped`, " +
+  "Process state of Quark as tracked by apps/server: `stopped`, `starting`, " +
     "`running_visible`, or `running_minimized`.",
 );
 
@@ -175,6 +176,68 @@ export const BrowserQueueStatusSchema = z.object({
   ),
 });
 
+// ─── Runtime configuration/status (apps/client backend) ────────────────────
+
+export const GuardOperationSchema = z.enum([
+  "userInfo",
+  "listFile",
+  "downloadStatus",
+  "downloadFile",
+  "updateDownloadStatus",
+  "importShareLink",
+]);
+export type GuardOperation = z.infer<typeof GuardOperationSchema>;
+
+export const RuntimeConfigSchema = z.object({
+  enabled: z.boolean().describe("Whether the idle monitor is enabled."),
+  checkIntervalMs: z.number().int().min(1_000).max(3_600_000),
+  downloadProbeIntervalMs: z.number().int().min(5_000).max(3_600_000),
+  activityWindowMs: z.number().int().min(1_000).max(3_600_000),
+  minimizeAfterMs: z.number().int().nonnegative().max(86_400_000),
+  stopAfterMs: z.number().int().nonnegative().max(7 * 86_400_000),
+  stopWhenLoggedOut: z.boolean(),
+  stopWhenUnhealthy: z.boolean(),
+  requireLoginFor: z.array(GuardOperationSchema),
+});
+
+export const RuntimeConfigPatchSchema = RuntimeConfigSchema.partial();
+
+export const LoginStateSchema = z.enum(["logged_in", "logged_out", "unknown"]);
+
+export const RuntimeHealthSchema = z.enum(["healthy", "degraded", "unhealthy"]);
+
+export const RuntimeStatusSchema = z.object({
+  generatedAt: z.number().int().nonnegative(),
+  process: ServerStatusSchema,
+  login: LoginStateSchema,
+  downloads: z.object({
+    running: z.number().int().nonnegative().nullable(),
+    checkedAt: z.number().int().nonnegative().nullable(),
+  }),
+  queue: BrowserQueueStatusSchema,
+  health: RuntimeHealthSchema,
+  healthScore: z.number().int().min(0).max(100),
+  idleForMs: z.number().int().nonnegative(),
+  monitor: z.object({
+    enabled: z.boolean(),
+    checkIntervalMs: z.number().int().positive(),
+    lastCheckAt: z.number().int().nonnegative().nullable(),
+    nextCheckAt: z.number().int().nonnegative().nullable(),
+    lastDecision: z.string().nullable(),
+    lastReason: z.string().nullable(),
+  }),
+  guard: z.object({
+    blocked: z.boolean(),
+    reason: z.string().nullable(),
+  }),
+  lastError: z.string().nullable(),
+});
+export type RuntimeConfig = z.infer<typeof RuntimeConfigSchema>;
+export type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
+export type LoginState = z.infer<typeof LoginStateSchema>;
+export type RuntimeHealth = z.infer<typeof RuntimeHealthSchema>;
+export type RuntimeStatus = z.infer<typeof RuntimeStatusSchema>;
+
 // ─── Operation results ───────────────────────────────────────────────────────
 
 export const QuarkDownloadFileResultSchema = z.object({
@@ -260,6 +323,10 @@ export const ClientEventSchema = z.union([
     type: z.literal("operation"),
     key: z.string(),
     phase: z.enum(["started", "done", "error"]),
+  }),
+  z.object({
+    type: z.literal("status"),
+    status: RuntimeStatusSchema,
   }),
 ]);
 export type ClientEvent = z.infer<typeof ClientEventSchema>;

@@ -68,6 +68,9 @@ Deno.test("serverContract events is an event iterator", () => {
 
 Deno.test("clientContract exposes the full business surface", () => {
   const keys = [
+    "config",
+    "updateConfig",
+    "status",
     "version",
     "queueStatus",
     "events",

@@ -14,4 +14,12 @@ export const sharedErrorMap = {
     status: 404,
     message: "Not Found",
   },
+  FORBIDDEN: {
+    status: 403,
+    message: "Operation blocked by guard",
+  },
+  SERVICE_UNAVAILABLE: {
+    status: 503,
+    message: "Service is not ready",
+  },
 } satisfies ErrorMap;

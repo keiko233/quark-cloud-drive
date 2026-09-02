@@ -15,6 +15,9 @@ import {
   QuarkFileListSchema,
   QuarkImportShareLinkResultSchema,
   QuarkUpdateDownloadStatusResultSchema,
+  RuntimeConfigPatchSchema,
+  RuntimeConfigSchema,
+  RuntimeStatusSchema,
   ServerEventSchema,
   ServerStatusSchema,
 } from "./schemas.ts";
@@ -32,6 +35,30 @@ import {
  * is a single resource: GET reads the transport center, POST mutates a task.
  */
 export const clientContract = oc.errors(sharedErrorMap).router({
+  config: oc.route({
+    method: "GET",
+    path: "/config",
+    description: "Read the persisted monitor and guard configuration.",
+  }).meta({ mcp: { tool: true } }).output(RuntimeConfigSchema),
+
+  updateConfig: oc.route({
+    method: "PATCH",
+    path: "/config",
+    inputStructure: "detailed",
+    description: "Patch and persist monitor/guard configuration.",
+  }).meta({ mcp: { tool: true } })
+    .input(z.object({ body: RuntimeConfigPatchSchema }))
+    .output(RuntimeConfigSchema),
+
+  status: oc.route({
+    method: "GET",
+    path: "/status",
+    description: [
+      "Quantified runtime status: process, login renderer, downloads,",
+      "operation queue, health score, monitor decision, and guard state.",
+    ].join("\n"),
+  }).meta({ mcp: { tool: true } }).output(RuntimeStatusSchema),
+
   version: oc.route({
     method: "GET",
     path: "/version",

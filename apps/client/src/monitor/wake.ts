@@ -3,6 +3,8 @@
 
 import { CDP_READY_POLL_MS, CDP_READY_TIMEOUT_MS, CDP_URL } from "../env.ts";
 import { serverClient } from "../server-client/index.ts";
+import { getRuntimeConfig } from "../store/config.ts";
+import { getSavedRuntimeStatus } from "./status.ts";
 
 /** One-shot CDP liveness check via the server's CDP proxy. */
 export async function isCdpReachable(timeoutMs = 1500): Promise<boolean> {
@@ -45,10 +47,22 @@ export async function waitForCdpReady(
 // Concurrency-safe wake: dedupe parallel callers onto one in-flight promise.
 let pendingWake: Promise<void> | null = null;
 
-export function ensureQuarkAwake(): Promise<void> {
+/** True when the monitor intentionally stopped a logged-out instance. */
+export async function isAutoWakeBlocked(): Promise<boolean> {
+  const config = await getRuntimeConfig();
+  if (!config.stopWhenLoggedOut) return false;
+  const status = await getSavedRuntimeStatus();
+  return status?.monitor.lastDecision === "stop" &&
+    status.monitor.lastReason === "login renderer detected";
+}
+
+export function ensureQuarkAwake(
+  options: { force?: boolean } = {},
+): Promise<void> {
   if (pendingWake) return pendingWake;
   pendingWake = (async () => {
     try {
+      if (!options.force && await isAutoWakeBlocked()) return;
       // Cheap path: if CDP already answers, nothing to do.
       if (await isCdpReachable()) return;
       // /start is idempotent: running → noop, minimized → restore, stopped →

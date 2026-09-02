@@ -17,6 +17,7 @@
     "npm:@orpc/server@^1.15.0": "1.15.0",
     "npm:@orpc/zod@^1.15.0": "1.15.0_@orpc+contract@1.15.0_@orpc+server@1.15.0_zod@4.5.4",
     "npm:hono@^4.13.5": "4.13.5",
+    "npm:playwright@*": "1.62.1",
     "npm:playwright@^1.62.1": "1.62.1",
     "npm:zod@^4.5.4": "4.5.4"
   },

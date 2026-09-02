@@ -7,6 +7,7 @@ import type { ProcessState } from "@quark/contract/schemas";
 import { EventPublisher } from "@orpc/server";
 import { log } from "../logger.ts";
 import { serverClient } from "../server-client/index.ts";
+import { getOperationQueue } from "../browser/context.ts";
 
 export interface IdleConfig {
   minimizeAfterMs: number;
@@ -84,11 +85,18 @@ export class Sleeper {
   }> {
     const [status, downloadStatus] = await Promise.allSettled([
       serverClient.status(),
-      // Raw business probe: is Quark actively downloading right now? This
-      // runs outside the operation queue to avoid serializing behind a
-      // potentially long download action.
-      import("../actions/download-status.ts").then((m) =>
-        m.readDownloadStatusRaw("running")
+      // The probe also drives the shared Quark window. It must be serialized
+      // with user operations, otherwise it can switch list-file to Transport
+      // while a virtual list is being collected.
+      getOperationQueue().run(
+        "downloadStatusProbe",
+        { key: "monitor:downloadStatus", priority: 10 },
+        async () => {
+          const { readDownloadStatusRaw } = await import(
+            "../actions/download-status.ts"
+          );
+          return await readDownloadStatusRaw("running", { restorePage: true });
+        },
       ),
     ]);
 

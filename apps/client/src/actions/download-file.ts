@@ -105,6 +105,15 @@ export function downloadFile(
       // queue from inside this operation).
       const normalizedName = normalizeFileListText(target.fileName);
       const status = await readDownloadStatusRaw("all");
+
+      // readDownloadStatusRaw necessarily changes the shared Quark window to
+      // the Transport tab. Restore the file-list tab and the target directory
+      // before looking up the row; otherwise a fresh download searches for a
+      // file-list row while the DOM still contains the transport panel.
+      await resetToHome(homePage);
+      if (target.parentPath) await navigateToPath(homePage, target.parentPath);
+      await waitForFileListReady(homePage);
+
       if (status.tasks.some((t) => t.name === normalizedName)) {
         log.debug(
           `downloadFile: "${target.fileName}" already in transport list, skipping click`,

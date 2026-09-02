@@ -14,8 +14,8 @@ import {
   readNamesSnapshot,
   scrollAndCollect,
   scrollListToRow,
+  selectTopNavigation,
 } from "../browser/page-utils.ts";
-import { fileListCache } from "../cache/caches.ts";
 
 export const BREADCRUMB_SELECTOR = "#quark-cloud-drive-list-all-breadcrumb";
 export const TABLE_ROW_SELECTOR = "tbody.ant-table-tbody > tr";
@@ -25,6 +25,8 @@ const HOME_TEXT = "首页";
 const ROOT_PATH_TEXT = "文件";
 const FILE_LIST_READY_TIMEOUT = 10_000;
 const FILE_LIST_ROUTE = "/list";
+const FILE_LIST_EMPTY_SELECTOR =
+  ".empty-drop, .empty-box, [class*='empty-content'], [class*='empty-text']";
 
 type NavPlan =
   | { action: "none" }
@@ -73,16 +75,7 @@ export async function resetToHome(homePage: Page): Promise<void> {
   }
 
   log.debug("resetToHome: navigating to root");
-  const userDivider = homePage.locator("div.user-divider").first();
-  await userDivider.waitFor({ state: "visible", timeout: 10_000 });
-
-  const clicked = await userDivider.evaluate((element) => {
-    const homeItem = element.children.item(0)?.querySelector("div");
-    homeItem?.click();
-    return Boolean(homeItem);
-  });
-
-  if (!clicked) throw new Error("Home nav item not found");
+  await selectTopNavigation(homePage, "首页", { force: true });
 
   await waitForRootBreadcrumb(homePage);
   await waitForFileListReady(homePage);
@@ -176,10 +169,42 @@ export async function waitForFileListReady(homePage: Page): Promise<void> {
     state: "visible",
     timeout: FILE_LIST_READY_TIMEOUT,
   });
-  await homePage.locator("tbody.ant-table-tbody").first().waitFor({
-    state: "visible",
-    timeout: FILE_LIST_READY_TIMEOUT,
-  });
+
+  // Quark does not render a table or scroll container for an empty folder.
+  // Waiting for the old table-only structure made valid empty directories
+  // look like a Playwright timeout. Accept either the populated table or the
+  // empty-state view as the terminal ready state.
+  const table = homePage.locator("tbody.ant-table-tbody").first();
+  const emptyState = homePage.locator(FILE_LIST_EMPTY_SELECTOR);
+  const startedAt = Date.now();
+  let ready = false;
+  while (Date.now() - startedAt < FILE_LIST_READY_TIMEOUT) {
+    if (await table.isVisible().catch(() => false)) {
+      ready = true;
+      break;
+    }
+    const emptyCount = await emptyState.count();
+    for (let i = 0; i < emptyCount; i++) {
+      if (await emptyState.nth(i).isVisible().catch(() => false)) {
+        ready = true;
+        break;
+      }
+    }
+    if (ready) break;
+    await homePage.waitForTimeout(100);
+  }
+
+  if (!ready) {
+    throw new Error(
+      `Timed out waiting for file list content or empty state after ${FILE_LIST_READY_TIMEOUT}ms`,
+    );
+  }
+
+  if (!await table.isVisible().catch(() => false)) {
+    log.trace("waitForFileListReady: empty folder");
+    return;
+  }
+
   await getScrollContainer(homePage).waitFor({
     state: "visible",
     timeout: FILE_LIST_READY_TIMEOUT,
@@ -285,13 +310,6 @@ export function listFile(
   path?: string,
 ): Promise<AsyncGenerator<FileListStreamEvent, QuarkFileList>> {
   const cacheKey = path ?? "";
-  const cached = fileListCache.get(cacheKey);
-  if (cached !== undefined) {
-    // deno-lint-ignore require-yield
-    return Promise.resolve((async function* () {
-      return cached;
-    })());
-  }
 
   return getOperationQueue().runStreaming(
     "listFile",
@@ -302,6 +320,11 @@ export function listFile(
       const homePage = getHomePage();
       await homePage.bringToFront();
       await homePage.waitForLoadState("domcontentloaded");
+
+      yield {
+        type: "status",
+        message: `当前页面 ${await describeCurrentPage(homePage)}`,
+      };
 
       const targetSegments = cacheKey ? parsePathSegments(cacheKey) : [];
       const homeNavActive = isHomeNavSelected(homePage);
@@ -321,12 +344,15 @@ export function listFile(
             await waitForFileListReady(homePage);
           } else if (plan.action === "navigate") {
             for (const segment of plan.segments) {
+              yield { type: "status", message: `double click ${segment}` };
               await openPathSegment(homePage, segment);
               await waitForFileListReady(homePage);
             }
           } else {
+            yield { type: "status", message: "click 首页" };
             await resetToHome(homePage);
             for (const segment of plan.segments) {
+              yield { type: "status", message: `double click ${segment}` };
               await openPathSegment(homePage, segment);
               await waitForFileListReady(homePage);
             }
@@ -335,46 +361,62 @@ export function listFile(
           log.debug(
             "listFile: nav=[home] breadcrumb unreadable, full reset",
           );
+          yield { type: "status", message: "click 首页" };
           await resetToHome(homePage);
-          if (cacheKey) await navigateToPath(homePage, cacheKey);
+          for (const segment of targetSegments) {
+            yield { type: "status", message: `double click ${segment}` };
+            await openPathSegment(homePage, segment);
+            await waitForFileListReady(homePage);
+          }
         }
       } else {
         log.debug(`listFile: nav=[other], switching to home nav`);
+        yield { type: "status", message: "click 首页" };
         await resetToHome(homePage);
-        if (cacheKey) await navigateToPath(homePage, cacheKey);
+        for (const segment of targetSegments) {
+          yield { type: "status", message: `double click ${segment}` };
+          await openPathSegment(homePage, segment);
+          await waitForFileListReady(homePage);
+        }
       }
 
       await waitForFileListReady(homePage);
+      yield { type: "status", message: "读取首页滚动列表" };
 
       // Collect with streaming progress: scrollAndCollect reports deduped
       // item counts through a channel that this generator relays as
       // `collecting` events.
-      const progress = new Channel<number>();
-      const collectPromise = (async () => {
+      let items: QuarkFileListItem[] = [];
+      const scrollContainer = getScrollContainer(homePage);
+      if (await scrollContainer.isVisible().catch(() => false)) {
+        const progress = new Channel<number>();
+        const collectPromise = (async () => {
+          try {
+            return await scrollAndCollect<QuarkFileListItem>({
+              page: homePage,
+              scrollContainer,
+              readVisible: () => readVisibleRows(homePage),
+              getKey: listFileItemKey,
+              label: "fileList",
+              onProgress: (seen) => progress.push(seen),
+            });
+          } finally {
+            progress.close();
+          }
+        })();
+
         try {
-          return await scrollAndCollect<QuarkFileListItem>({
-            page: homePage,
-            scrollContainer: getScrollContainer(homePage),
-            readVisible: () => readVisibleRows(homePage),
-            getKey: listFileItemKey,
-            label: "fileList",
-            onProgress: (seen) => progress.push(seen),
-          });
+          while (true) {
+            const seen = await progress.recv();
+            if (seen === null) break;
+            yield { type: "collecting", seen, total: 0 };
+          }
+          items = await collectPromise;
         } finally {
           progress.close();
         }
-      })();
-
-      let items: QuarkFileListItem[] = [];
-      try {
-        while (true) {
-          const seen = await progress.recv();
-          if (seen === null) break;
-          yield { type: "collecting", seen, total: 0 };
-        }
-        items = await collectPromise;
-      } finally {
-        progress.close();
+      } else {
+        log.trace("listFile: empty folder, skipping virtual-list collection");
       }
 
       const pathSegments = await readBreadcrumbPath(homePage);
@@ -382,8 +424,18 @@ export function listFile(
         `listFile: ${items.length} items at path=[${pathSegments.join("/")}]`,
       );
       const result: QuarkFileList = { path: pathSegments, items };
-      fileListCache.set(cacheKey, result);
       return result;
     },
   );
+}
+
+async function describeCurrentPage(homePage: Page): Promise<string> {
+  const route = getPageRoute(homePage);
+  if (!route.startsWith(FILE_LIST_ROUTE)) {
+    if (route.startsWith("/transport")) return "传输";
+    return route || "未知";
+  }
+
+  const path = await readBreadcrumbPath(homePage).catch(() => null);
+  return path === null || path.length === 0 ? "首页" : `首页/${path.join("/")}`;
 }

@@ -11,13 +11,17 @@ import {
   getHomePage,
   getPageRoute,
   scrollAndCollect,
+  selectTopNavigation,
 } from "../browser/page-utils.ts";
 import { downloadStatusCache } from "../cache/caches.ts";
+import {
+  navigateToPath,
+  readBreadcrumbPath,
+  resetToHome,
+} from "./list-file.ts";
 
 const DOWNLOAD_TEXT = "下载";
-const USER_DIVIDER_SELECTOR = "div.user-divider";
 const TRANSPORT_TASK_BOX_SELECTOR = "div.transport-task-box";
-const TRANSPORT_ROUTE = "/transport";
 const TABS_NAV_SELECTOR = "div.ant-tabs-nav-list";
 const TASK_LIST_SELECTOR = "div.task-list-container";
 const TASK_ITEM_SELECTOR = "div.task-item";
@@ -31,24 +35,8 @@ export {
 };
 
 export async function openTransportCenter(homePage: Page): Promise<void> {
-  if (getPageRoute(homePage).startsWith(TRANSPORT_ROUTE)) {
-    log.trace(
-      "openTransportCenter: already on transport route, skipping click",
-    );
-    return;
-  }
-
   log.debug("openTransportCenter: opening transport center");
-  const userDivider = homePage.locator(USER_DIVIDER_SELECTOR).first();
-  await userDivider.waitFor({ state: "visible", timeout: 10_000 });
-
-  const clicked = await userDivider.evaluate((element) => {
-    const transportItem = element.children.item(1)?.querySelector("div");
-    transportItem?.click();
-    return Boolean(transportItem);
-  });
-
-  if (!clicked) throw new Error("Transport nav item not found");
+  await selectTopNavigation(homePage, "传输");
 
   await homePage.locator(TRANSPORT_TASK_BOX_SELECTOR).first().waitFor({
     state: "visible",
@@ -61,18 +49,17 @@ export async function openTransportCenter(homePage: Page): Promise<void> {
 export async function openDownloadTasks(homePage: Page): Promise<void> {
   log.trace("openDownloadTasks: clicking download task box");
 
-  const clicked = await homePage.locator(TRANSPORT_TASK_BOX_SELECTOR)
-    .evaluateAll((boxes, downloadText) => {
-      const taskBox = boxes.find((box) => {
-        const title = box.querySelector("div.transport-task-title")
-          ?.textContent ?? "";
-        return title.replace(/\s+/g, " ").trim() === downloadText;
-      });
-      (taskBox as { click?: () => void } | undefined)?.click?.();
-      return Boolean(taskBox);
-    }, DOWNLOAD_TEXT);
+  const taskBox = homePage.locator(TRANSPORT_TASK_BOX_SELECTOR)
+    .filter({ hasText: DOWNLOAD_TEXT })
+    .first();
+  await taskBox.waitFor({ state: "visible", timeout: 10_000 });
 
-  if (!clicked) throw new Error("Download task box not found");
+  const className = await taskBox.getAttribute("class") ?? "";
+  if (!className.split(/\s+/).includes("transport-task-box-selected")) {
+    await taskBox.dispatchEvent("click");
+  } else {
+    log.trace("openDownloadTasks: download task box already selected");
+  }
 
   await homePage.locator(TABS_NAV_SELECTOR).first().waitFor({
     state: "visible",
@@ -191,25 +178,56 @@ async function readDownloadTasks(
  */
 export async function readDownloadStatusRaw(
   mode: QuarkDownloadStatusMode = "running",
+  options: { restorePage?: boolean } = {},
 ): Promise<QuarkDownloadStatus> {
   const homePage = getHomePage();
   await homePage.bringToFront();
   await homePage.waitForLoadState("domcontentloaded");
-  await openTransportCenter(homePage);
-  await openDownloadTasks(homePage);
 
-  const normalizedMode = (mode ?? "running") as QuarkDownloadStatusMode;
-  const states: QuarkDownloadTaskState[] = normalizedMode === "all"
-    ? ["running", "complete"]
-    : [normalizedMode === "complete" ? "complete" : "running"];
+  const restorePage = options.restorePage === true;
+  const wasOnFileList = restorePage && getPageRoute(homePage).startsWith(
+    "/list",
+  );
+  const restorePath = wasOnFileList
+    ? await readBreadcrumbPath(homePage).catch(() => null)
+    : null;
 
-  const tasks: QuarkDownloadTask[] = [];
-  for (const state of states) {
-    tasks.push(...await readDownloadTasks(homePage, state));
+  try {
+    await openTransportCenter(homePage);
+    await openDownloadTasks(homePage);
+
+    const normalizedMode = (mode ?? "running") as QuarkDownloadStatusMode;
+    const states: QuarkDownloadTaskState[] = normalizedMode === "all"
+      ? ["running", "complete"]
+      : [normalizedMode === "complete" ? "complete" : "running"];
+
+    const tasks: QuarkDownloadTask[] = [];
+    for (const state of states) {
+      tasks.push(...await readDownloadTasks(homePage, state));
+    }
+
+    log.debug(`downloadStatus: ${tasks.length} tasks`);
+    return { tasks };
+  } finally {
+    if (wasOnFileList) {
+      await resetToHome(homePage).catch((error) =>
+        log.warn(
+          `downloadStatus: failed to restore 首页: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      );
+      if (restorePath && restorePath.length > 0) {
+        await navigateToPath(homePage, restorePath.join("/")).catch((error) =>
+          log.warn(
+            `downloadStatus: failed to restore path: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          )
+        );
+      }
+    }
   }
-
-  log.debug(`downloadStatus: ${tasks.length} tasks`);
-  return { tasks };
 }
 
 /**

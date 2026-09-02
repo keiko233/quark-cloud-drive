@@ -1,9 +1,9 @@
 # quark-cloud-drive
 
-Monorepo for automating Quark Cloud Drive (夸克网盘). It runs the desktop client
-inside Docker under Wine/Electron with Xorg + VNC, and drives it headlessly over
-the Chrome DevTools Protocol (CDP) from a Deno service. A Deno 2 workspace with
-two apps and one shared contract package:
+Monorepo for automating Quark Cloud Drive. It runs the desktop client inside
+Docker under Wine/Electron with Xorg + VNC, and drives it headlessly over the
+Chrome DevTools Protocol (CDP) from a Deno service. A Deno 2 workspace with two
+apps and one shared contract package:
 
 - **`apps/server`** — thin process manager + CDP proxy for the Wine/Electron
   Quark instance (Xorg + x11vnc). Exposes process lifecycle (`/start`, `/stop`,
@@ -65,9 +65,37 @@ Notes:
 
 ### Local dev
 
+For daily development, use a Docker server with a host-side client:
+`apps/server` runs Quark/Wine, Xorg/VNC, and the CDP proxy inside Docker, while
+`apps/client` runs the Deno development server on the host and connects to the
+Docker-published manager/CDP ports. This avoids rebuilding the client image when
+iterating on Playwright operations.
+
 ```bash
-deno task dev:server    # boot apps/server (or: deno task --cwd apps/server dev:api)
-deno task dev:client    # boot apps/client with --watch
+docker compose up -d --build server
+deno task dev:client    # boot apps/client on the host with --watch
+```
+
+The host-side client defaults match the Compose port mappings:
+
+- `SERVER_URL=http://127.0.0.1:8080` — Docker server manager API
+- `CDP_URL=http://127.0.0.1:9223` — Docker server CDP proxy
+
+You can also copy `.env.example` to `.env` and then run `deno task dev:client`.
+Use `deno task dev:server` only when working on the server manager itself; that
+mode does not include the Quark/Wine runtime and cannot validate real Playwright
+page operations.
+
+To debug Playwright page operations, open the host-side client's
+`http://127.0.0.1:3000/devtools` and select the relevant Quark target to inspect
+the live DOM, console, and network requests. The CDP target list is also
+available at `http://127.0.0.1:3000/devtools/api/targets`. Use the observed page
+structure as the source of truth before changing selectors.
+
+The full Compose stack, including the containerized client, remains available:
+
+```bash
+docker compose up --build
 ```
 
 Without a Wine/Quark launch script present, `QUARK_AUTOSTART` is skipped with a
@@ -83,7 +111,9 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
   `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`, `LAUNCH_SCRIPT`, `WINE_*`.
 - Client (`apps/client`): `SERVER_URL`, `CDP_URL`, `VNC_URL`, `SERVER_PORT`
   (3000), `CLIENT_IDLE_MINIMIZE_AFTER_MS` / `CLIENT_IDLE_STOP_AFTER_MS` (idle
-  policy), `QUEUE_*`, `CLIENT_KV_PATH`, `LOG_LEVEL`.
+  policy), `QUEUE_*`, `CLIENT_KV_PATH`, `LOG_LEVEL`. For host-side client
+  development, use `SERVER_URL=http://127.0.0.1:8080` and
+  `CDP_URL=http://127.0.0.1:9223`.
 
 ## API surfaces
 
@@ -101,6 +131,10 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
 - **DevTools** — `/devtools` target picker; `/devtools/ws/*` bridges the
   DevTools frontend WebSocket to the CDP proxy; `/devtools/http/*` proxies the
   browser-hosted frontend assets.
+- `download_status` intentionally opens Quark's transport tab to read its task
+  list. `download_file` also performs this check for de-duplication, then
+  restores the Home file-list tab and requested directory before locating the
+  file row.
 - **History** — `/history` returns recent task/download records from Deno KV
   (ops convenience, not part of the contract).
 
@@ -110,6 +144,21 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
 deno task check    # fmt + lint + typecheck
 deno task test     # unit + contract + mcp tests (Deno KV)
 ```
+
+The `list-file` CDP integration test requires a real Quark page and an active
+login, so it is skipped by default and does not run in CI's `deno task test`.
+After starting the Docker server and host-side client locally, run it
+explicitly:
+
+```bash
+deno task test:e2e:client
+```
+
+The test only reads the Home list and verifies that returning from Transport to
+Home emits live SSE events for the current page, the Home click, and
+virtual-list collection. CI can keep using the default unit tests without a
+Quark/Wine login; if CI later provides a login session, set `QUARK_E2E=1`,
+`CLIENT_URL`, and `CDP_URL` to run the same test.
 
 ## CI
 

@@ -212,6 +212,10 @@ export const DownloadFileStreamEventSchema = z.union([
 
 export const FileListStreamEventSchema = z.union([
   z.object({
+    type: z.literal("status"),
+    message: z.string(),
+  }),
+  z.object({
     type: z.literal("collecting"),
     seen: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),

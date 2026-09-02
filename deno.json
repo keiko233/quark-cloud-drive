@@ -12,6 +12,7 @@
     "check": "deno fmt --check && deno lint && deno check apps/server/src/main.ts apps/client/src/main.ts",
     "test": "deno test -A --unstable-kv apps packages",
     "dev:client": "deno task --cwd apps/client dev",
-    "dev:server": "deno task --cwd apps/server dev"
+    "dev:server": "deno task --cwd apps/server dev",
+    "test:e2e:client": "QUARK_E2E=1 deno test -A --unstable-kv apps/client/src/actions/list-file.e2e.test.ts"
   }
 }

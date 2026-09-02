@@ -161,3 +161,25 @@ Deno.test("runStreaming forwards yields and returns the final value", async () =
   // verify the yields were forwarded in order.
   assertEquals(collected, [1, 2]);
 });
+
+Deno.test("runStreaming propagates generator failures to the consumer", async () => {
+  const q = new OperationQueue({ maxWaiting: 100 });
+  const stream = await q.runStreaming(
+    "gen-error",
+    {},
+    async function* () {
+      yield "before-error";
+      throw new Error("browser action failed");
+    },
+  );
+
+  assertEquals(await stream.next(), {
+    done: false,
+    value: "before-error",
+  });
+  await assertRejects(
+    () => stream.next(),
+    Error,
+    "browser action failed",
+  );
+});

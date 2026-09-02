@@ -97,8 +97,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     inputStructure: "detailed",
     description: [
       "List files/folders in a directory. SSE stream yielding",
-      "`collecting` progress events; the final value is the full",
-      "`{path, items}` list (virtual scroll is exhausted).",
+      "`status` navigation/read events and `collecting` progress events;",
+      "the final value is the full `{path, items}` list (virtual scroll is",
+      "exhausted).",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })

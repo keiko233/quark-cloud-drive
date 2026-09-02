@@ -5,7 +5,6 @@ import type {
 import { log } from "../logger.ts";
 import { getOperationQueue } from "../browser/context.ts";
 import { getHomePage } from "../browser/page-utils.ts";
-import { fileListCache } from "../cache/caches.ts";
 
 export const SEARCH_TRIGGER_SELECTOR =
   "#root > div > section > section > header > div > div.main-content > div > div > div";
@@ -98,8 +97,6 @@ export function importShareLink(
       const pageToClose = windowShell ?? sharePage;
       await pageToClose.evaluate(() => self.close()).catch(() => undefined);
 
-      // Importing a share can add rows to the file list — drop the cache.
-      fileListCache.clear();
       return { url, savedPath };
     },
   );

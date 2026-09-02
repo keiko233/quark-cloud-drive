@@ -24,8 +24,8 @@ ENV RDP_SERVER=no \
     WINEARCH=win64 \
     WINEDEBUG=-all \
     DISPLAY=:0 \
-    DEEPIN_WINE8_URL=https://mirrors.sdu.edu.cn/spark-store/amd64-store/depends/deepin-wine8/deepin-wine8-stable_8.16deepin41_spark1_amd64.deb \
-    SPARK_QUARK_URL=https://mirrors.sdu.edu.cn/spark-store/store/network/cn.quarkclouddrive.spark/cn.quarkclouddrive.spark_3.2.6spark4_all.deb \
+    DEEPIN_WINE8_URL=https://d.spark-app.store/amd64-store/depends/deepin-wine8/deepin-wine8-stable_8.16deepin41_spark1_amd64.deb \
+    SPARK_QUARK_URL=https://d.spark-app.store/store/network/cn.quarkclouddrive.spark/cn.quarkclouddrive.spark_3.2.6spark4_all.deb \
     WINE_BIN=/opt/deepin-wine8-stable/bin/wine \
     WINESERVER_BIN=/opt/deepin-wine8-stable/bin/wineserver
 

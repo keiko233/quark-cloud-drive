@@ -28,10 +28,61 @@ const INSPECTOR_SHELL = `<!DOCTYPE html>
 <meta charset="utf-8">
 <title>DevTools</title>
 <meta name="referrer" content="no-referrer">
-<script type="module" src="./entrypoints/inspector/inspector.js"></script>
 <link href="./application_tokens.css" rel="stylesheet">
 <link href="./design_system_tokens.css" rel="stylesheet">
 <body class="undocked" id="-blink-dev-tools">
+<script>
+(() => {
+  const clipboard = navigator.clipboard;
+  const nativeWriteText = clipboard?.writeText?.bind(clipboard);
+
+  const writeWithTextarea = (text) => {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.cssText =
+      "position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy");
+    } finally {
+      textarea.remove();
+    }
+    return copied;
+  };
+
+  const writeText = async (text) => {
+    if (nativeWriteText) {
+      try {
+        await nativeWriteText(text);
+        return;
+      } catch {
+        // Hosted DevTools is often served from an insecure origin.
+      }
+    }
+    if (writeWithTextarea(text)) return;
+    throw new Error("Clipboard write is unavailable");
+  };
+
+  try {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      get: () => new Proxy(clipboard ?? {}, {
+        get: (target, property) =>
+          property === "writeText"
+            ? writeText
+            : Reflect.get(target, property, target),
+      }),
+    });
+  } catch {
+    // Keep the native implementation if the browser makes this property read-only.
+  }
+})();
+</script>
+<script type="module" src="./entrypoints/inspector/inspector.js"></script>
 `;
 
 // Target picker for /devtools. Self-contained (no external assets); fetches

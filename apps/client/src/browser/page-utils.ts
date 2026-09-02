@@ -182,11 +182,17 @@ export async function scrollListToRow(
   for (let hop = 0; hop < maxHops; hop++) {
     const count = await candidates().count();
     if (count > 0) {
+      const row = candidates().first();
+      // Virtualized tables may recycle the DOM row between the count check
+      // and the caller's action. Materialize it and confirm visibility while
+      // it is still the current match.
+      await row.scrollIntoViewIfNeeded();
+      await row.waitFor({ state: "visible", timeout: settleTimeoutMs });
       log.debug(
         `scrollListToRow: found "${targetName}" after ${hop} hops ` +
           `(${count} candidate(s))`,
       );
-      return candidates().first();
+      return row;
     }
     const scrollResult = await scrollOneViewportAndSettle(
       page,

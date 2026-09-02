@@ -144,6 +144,7 @@ RUN --mount=type=bind,source=apps/server/wineprefix.tar.zst,target=/tmp/winepref
 
 COPY ./apps/server/scripts/run-quark.sh /usr/local/bin/run-quark.sh
 COPY ./apps/server/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
+COPY ./apps/server/scripts/configure-quark-settings.ts /usr/local/bin/configure-quark-settings.ts
 
 # The manager source + workspace. The image is run with cwd=/opt/quark-server.
 COPY ./deno.json /opt/quark-server/deno.json

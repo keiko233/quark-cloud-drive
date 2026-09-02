@@ -92,16 +92,21 @@ export class Sleeper {
         "downloadStatusProbe",
         { key: "monitor:downloadStatus", priority: 10 },
         async () => {
-          const { readDownloadStatusRaw } = await import(
-            "../actions/download-status.ts"
-          );
+          const { readDownloadStatusRaw, readRunningDownloadCountRaw } =
+            await import(
+              "../actions/download-status.ts"
+            );
+          const count = await readRunningDownloadCountRaw();
+          if (count !== null) return count;
           return await readDownloadStatusRaw("running", { restorePage: true });
         },
       ),
     ]);
 
     const hasRunningTask = downloadStatus.status === "fulfilled" &&
-      downloadStatus.value.tasks.length > 0;
+      (typeof downloadStatus.value === "number"
+        ? downloadStatus.value > 0
+        : downloadStatus.value.tasks.length > 0);
 
     const state = status.status === "fulfilled"
       ? status.value.state

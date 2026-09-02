@@ -1,7 +1,4 @@
-import type {
-  QuarkDownloadFileResult,
-  QuarkDownloadStatus,
-} from "@quark/contract/schemas";
+import type { QuarkDownloadStatus } from "@quark/contract/schemas";
 import { TtlCache } from "./cache.ts";
 
 // Central TTL caches. Write actions invalidate the read caches they could
@@ -12,6 +9,3 @@ export const downloadStatusCache = new TtlCache<string, QuarkDownloadStatus>(
 );
 export const loginStatusCache = new TtlCache<"s", { loggedIn: boolean }>(5_000);
 export const userInfoCache = new TtlCache<"s", { capacity: string }>(30_000);
-export const downloadFileCache = new TtlCache<string, QuarkDownloadFileResult>(
-  5_000,
-);

@@ -61,6 +61,9 @@ Notes:
 - The `./wine-data-spark` volume is the default runtime data dir — the current
   installer crashes before creating a visible Electron window, so the app is
   driven from its Spark-bottle profile. Downloads land in `./downloads`.
+- On every Quark launch, the server normalizes the mounted wine-data settings:
+  downloads are enabled at `C:\\users\\wineuser\\Downloads` and the desktop
+  floating window remains disabled. Other Quark settings are preserved.
 - The client's Deno KV store survives restarts via the `client-data` volume.
 
 ### Local dev

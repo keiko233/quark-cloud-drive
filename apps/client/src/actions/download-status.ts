@@ -231,6 +231,102 @@ export async function readDownloadStatusRaw(
 }
 
 /**
+ * Read the live running-task count without navigating to 传输. This is used
+ * by the idle monitor so background checks do not steal 首页's scroll state.
+ * `null` means this Quark build does not expose the native manager API and
+ * callers should fall back to the rendered transport panel.
+ */
+export async function readRunningDownloadCountRaw(): Promise<number | null> {
+  const homePage = getHomePage();
+  await homePage.bringToFront();
+  await homePage.waitForLoadState("domcontentloaded");
+
+  return await homePage.evaluate(async () => {
+    type DownloadManager = {
+      dboDir?: { getCount?: () => Promise<unknown> };
+    };
+    const manager = (window as unknown as { downloadManager?: DownloadManager })
+      .downloadManager;
+    const dboDir = manager?.dboDir;
+    const getCount = dboDir?.getCount;
+    if (typeof getCount !== "function") return null;
+
+    const count = await getCount.call(dboDir);
+    return typeof count === "number" ? count : null;
+  });
+}
+
+/**
+ * Read Quark's native task index without opening 传输. The rendered transport
+ * page is a shared view and navigating there steals the file-list selection,
+ * so download actions use this index for duplicate checks instead.
+ */
+export async function readDownloadTaskNamesRaw(): Promise<string[] | null> {
+  const homePage = getHomePage();
+  await homePage.bringToFront();
+  await homePage.waitForLoadState("domcontentloaded");
+
+  try {
+    return await homePage.evaluate(async () => {
+      type NativeTask = {
+        name?: unknown;
+        path?: unknown;
+        status?: unknown;
+      };
+      type TaskRecord = {
+        add?: unknown;
+        sub?: unknown;
+      };
+      type DownloadManager = {
+        dboDir?: { getTasks?: () => Promise<unknown> };
+      };
+
+      const manager =
+        (window as unknown as { downloadManager?: DownloadManager })
+          .downloadManager;
+      const dboDir = manager?.dboDir;
+      const getTasks = dboDir?.getTasks;
+      if (typeof getTasks !== "function") return null;
+
+      const records = await getTasks.call(dboDir);
+      if (!Array.isArray(records)) return [];
+
+      const names = new Set<string>();
+      const visit = (value: unknown): void => {
+        if (Array.isArray(value)) {
+          for (const item of value) visit(item);
+          return;
+        }
+        if (!value || typeof value !== "object") return;
+
+        const task = value as NativeTask;
+        if (
+          typeof task.name === "string" &&
+          (typeof task.path === "string" || task.status !== undefined)
+        ) {
+          const name = task.name.replace(/\s+/g, " ").trim();
+          if (name) names.add(name);
+        }
+
+        const record = value as TaskRecord;
+        visit(record.add);
+        visit(record.sub);
+      };
+
+      visit(records);
+      return [...names];
+    });
+  } catch (error) {
+    log.warn(
+      `readDownloadTaskNamesRaw: native task index unavailable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return null;
+  }
+}
+
+/**
  * Queued public entry point (used by the router). Cached for 5s per mode.
  */
 export function downloadStatus(

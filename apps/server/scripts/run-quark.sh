@@ -205,6 +205,7 @@ echo "  DOWNLOADS_DIR : $DOWNLOADS_DIR"
 
 mkdir -p "$DATA_DIR"
 mkdir -p "$DOWNLOADS_DIR"
+export QUARK_DATA_DIR="$DATA_DIR"
 if [ "$(id -u)" = "0" ]; then
     chown -R wineuser:wineuser "$DATA_DIR"
     chmod -R u+rwX "$DATA_DIR"

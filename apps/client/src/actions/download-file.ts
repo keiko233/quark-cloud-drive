@@ -6,7 +6,7 @@ import type {
 import { log } from "../logger.ts";
 import { getOperationQueue } from "../browser/context.ts";
 import { getHomePage, scrollListToRow } from "../browser/page-utils.ts";
-import { downloadFileCache, downloadStatusCache } from "../cache/caches.ts";
+import { downloadStatusCache } from "../cache/caches.ts";
 import {
   extractFileListRowName,
   getScrollContainer,
@@ -18,7 +18,7 @@ import {
   TABLE_ROW_SELECTOR,
   waitForFileListReady,
 } from "./list-file.ts";
-import { readDownloadStatusRaw } from "./download-status.ts";
+import { readDownloadTaskNamesRaw } from "./download-status.ts";
 
 function getTargetFromPath(
   path: string,
@@ -47,14 +47,84 @@ async function findFileRow(
   });
 }
 
-async function clickDownloadButton(row: Locator): Promise<void> {
+const ROW_CHECKBOX_SELECTOR = "td:first-child label.ant-checkbox-wrapper";
+const ROW_CHECKBOX_INPUT_SELECTOR =
+  `${ROW_CHECKBOX_SELECTOR} input[type="checkbox"]`;
+const BATCH_DOWNLOAD_BUTTON_SELECTOR = "#quark-cloud-drive-section-main > " +
+  "div.quark-cloud-drive-file-list-header > " +
+  "div.list-header-bottom > " +
+  "div.list-header-right > " +
+  "div.button-flow-group-container > div > button:nth-child(1)";
+const DOWNLOAD_BUTTON_TIMEOUT = 10_000;
+
+async function waitForCheckboxState(
+  input: Locator,
+  checked: boolean,
+): Promise<void> {
+  const deadline = Date.now() + DOWNLOAD_BUTTON_TIMEOUT;
+  while (Date.now() < deadline) {
+    if ((await input.isChecked()) === checked) return;
+    await input.page().waitForTimeout(100);
+  }
+  throw new Error(
+    `Quark row checkbox did not become ${checked ? "checked" : "unchecked"}`,
+  );
+}
+
+/**
+ * Quark's stable download flow is row selection followed by the batch toolbar
+ * action. Do not use the row hover actions: their order changes by file type
+ * (archives expose 解压 before 下载).
+ */
+async function clickDownloadButton(
+  homePage: Page,
+  row: Locator,
+): Promise<void> {
   await row.scrollIntoViewIfNeeded();
-  await row.hover();
-  const button = row
-    .locator(".hover-oper > .hover-oper-list > .hover-oper-item")
-    .first();
-  await button.waitFor({ state: "visible", timeout: 5_000 });
-  await button.click();
+  await row.waitFor({ state: "visible", timeout: 5_000 });
+
+  const targetKey = await row.getAttribute("data-row-key");
+  const selectedRows = homePage.locator(
+    `${TABLE_ROW_SELECTOR}.ant-table-row-selected`,
+  );
+  for (let index = 0; index < await selectedRows.count(); index++) {
+    const selected = selectedRows.nth(index);
+    if (await selected.getAttribute("data-row-key") === targetKey) continue;
+    const selectedInput = selected.locator(ROW_CHECKBOX_INPUT_SELECTOR).first();
+    await selectedInput.click();
+    await waitForCheckboxState(selectedInput, false);
+  }
+
+  const input = row.locator(ROW_CHECKBOX_INPUT_SELECTOR).first();
+  await input.waitFor({ state: "attached", timeout: 5_000 });
+  if (!await input.isChecked()) {
+    await input.click();
+  }
+  await waitForCheckboxState(input, true);
+
+  const download = homePage.locator(BATCH_DOWNLOAD_BUTTON_SELECTOR).filter({
+    hasText: /^\s*下载\s*$/,
+  }).first();
+
+  const deadline = Date.now() + DOWNLOAD_BUTTON_TIMEOUT;
+  let ready = false;
+  while (Date.now() < deadline) {
+    if (
+      await download.isVisible().catch(() => false) &&
+      await download.isEnabled().catch(() => false)
+    ) {
+      ready = true;
+      break;
+    }
+    await homePage.waitForTimeout(200);
+  }
+  if (!ready) {
+    throw new Error(
+      "Quark's 下载 button did not become enabled after row selection",
+    );
+  }
+  await download.click();
+  await homePage.waitForTimeout(500);
 }
 
 /**
@@ -64,14 +134,6 @@ async function clickDownloadButton(row: Locator): Promise<void> {
 export function downloadFile(
   path: string,
 ): Promise<AsyncGenerator<DownloadFileStreamEvent, QuarkDownloadFileResult>> {
-  const cached = downloadFileCache.get(path);
-  if (cached !== undefined) {
-    // deno-lint-ignore require-yield
-    return Promise.resolve((async function* () {
-      return cached;
-    })());
-  }
-
   return getOperationQueue().runStreaming(
     "downloadFile",
     { key: `downloadFile:${path}` },
@@ -101,20 +163,16 @@ export function downloadFile(
       }
       await waitForFileListReady(homePage);
 
-      // Dedup against the live transport panel (raw read — never re-enter the
-      // queue from inside this operation).
+      // Dedup against Quark's native task index. Reading the rendered
+      // transport panel would navigate away from the file list before the
+      // actual download click and clear the current row selection.
       const normalizedName = normalizeFileListText(target.fileName);
-      const status = await readDownloadStatusRaw("all");
-
-      // readDownloadStatusRaw necessarily changes the shared Quark window to
-      // the Transport tab. Restore the file-list tab and the target directory
-      // before looking up the row; otherwise a fresh download searches for a
-      // file-list row while the DOM still contains the transport panel.
-      await resetToHome(homePage);
-      if (target.parentPath) await navigateToPath(homePage, target.parentPath);
-      await waitForFileListReady(homePage);
-
-      if (status.tasks.some((t) => t.name === normalizedName)) {
+      const taskNames = await readDownloadTaskNamesRaw();
+      if (
+        taskNames?.some((name) =>
+          normalizeFileListText(name) === normalizedName
+        )
+      ) {
         log.debug(
           `downloadFile: "${target.fileName}" already in transport list, skipping click`,
         );
@@ -123,11 +181,10 @@ export function downloadFile(
 
       yield { type: "clicking", name: target.fileName };
       const row = await findFileRow(homePage, normalizedName);
-      await clickDownloadButton(row);
+      await clickDownloadButton(homePage, row);
 
       log.debug(`downloadFile: queued "${target.fileName}"`);
       const result: QuarkDownloadFileResult = { name: target.fileName };
-      downloadFileCache.set(path, result);
       downloadStatusCache.clear();
       return result;
     },

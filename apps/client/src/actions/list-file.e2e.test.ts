@@ -48,7 +48,9 @@ Deno.test({
         { timeout: 10_000 },
       );
 
-      const response = await fetch(`${clientUrl}/list-file`);
+      const response = await fetch(`${clientUrl}/list-file`, {
+        headers: { Accept: "text/event-stream" },
+      });
       assertEquals(response.status, 200);
       const events = parseSseEvents(await response.text());
       const statuses = events.filter((event) => event.type === "status")

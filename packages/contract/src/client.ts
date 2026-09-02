@@ -123,10 +123,11 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     path: "/list-file",
     inputStructure: "detailed",
     description: [
-      "List files/folders in a directory. SSE stream yielding",
-      "`status` navigation/read events and `collecting` progress events;",
-      "the final value is the full `{path, items}` list (virtual scroll is",
-      "exhausted).",
+      "List files/folders in a directory. The final value is the full",
+      "`{path, items}` list (virtual scroll is exhausted). Response format",
+      "is negotiated by Accept: `text/event-stream` yields SSE progress",
+      "(`status` navigation/read + `collecting` events); anything else",
+      "returns the final `{path, items}` as plain JSON.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
@@ -140,9 +141,10 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     path: "/download-file",
     inputStructure: "detailed",
     description: [
-      "Trigger a download for a file OR folder. SSE stream yielding",
-      "`navigating`/`clicking` progress; the final value is",
-      "`{name, alreadyQueued?}`.",
+      "Trigger a download for a file OR folder. The final value is",
+      "`{name, alreadyQueued?}`. Response format is negotiated by Accept:",
+      "`text/event-stream` yields SSE progress (`navigating`/`clicking`);",
+      "anything else returns the final result as plain JSON.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
@@ -191,9 +193,10 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     path: "/import-share-link",
     inputStructure: "detailed",
     description: [
-      "Import a `https://pan.quark.cn/s/...` share link. SSE stream",
-      "yielding `opening`/`saving` progress; the final value is",
-      "`{url, savedPath}`.",
+      "Import a `https://pan.quark.cn/s/...` share link. The final value is",
+      "`{url, savedPath}`. Response format is negotiated by Accept:",
+      "`text/event-stream` yields SSE progress (`opening`/`saving`);",
+      "anything else returns the final result as plain JSON.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })

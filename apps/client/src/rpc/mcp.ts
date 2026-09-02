@@ -16,6 +16,7 @@ import { call, isProcedure } from "@orpc/server";
 import type { AnyRouter } from "@orpc/server";
 import { clientRouter } from "./router.ts";
 import { log } from "../logger.ts";
+import { consumeAsyncIterableFinal, isAsyncIterable } from "./stream.ts";
 
 const SERVER_NAME = "quark-remote-client";
 const SERVER_VERSION = "1.0.0";
@@ -28,6 +29,10 @@ const SERVER_INSTRUCTIONS = [
   "",
   "## Common pitfalls",
   "",
+  "- **Streaming tools return the final value**: `list_file`, `download_file`",
+  "  and `import_share_link` run as long operations. The tool call blocks until",
+  "  they finish and returns the result (e.g. `{path, items}`), not progress",
+  "  events.",
   "- **First call after idle is slow**: the host may have minimized/stopped",
   "  Quark; the first request wakes it (a few seconds of cold-start).",
   "- **Concurrency is 1**: tools are served serially, not in parallel.",
@@ -132,8 +137,15 @@ function registerRouterTools(mcp: McpServer, router: AnyRouter): number {
                   }],
                 };
               }
+              // Streaming procedures return an async generator. MCP tools have
+              // no stream representation, so consume it and return the final
+              // value (e.g. `{path, items}` for list_file) instead of a
+              // JSON.stringify'd `{}` of the generator object.
+              const finalValue = isAsyncIterable(result)
+                ? await consumeAsyncIterableFinal(result)
+                : result;
               return {
-                content: [{ type: "text", text: JSON.stringify(result) }],
+                content: [{ type: "text", text: JSON.stringify(finalValue) }],
               };
             } catch (error) {
               return {

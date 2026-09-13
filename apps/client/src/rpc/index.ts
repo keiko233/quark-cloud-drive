@@ -12,6 +12,11 @@ import { handleMcpRequest } from "./mcp.ts";
 import { vncApp } from "./vnc.ts";
 import { devtoolsApp } from "./devtools.ts";
 import { kvStore } from "../store/kv.ts";
+import {
+  consumeEventIteratorSSE,
+  isEventStreamResponse,
+  wantsEventStream,
+} from "./stream.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
   plugins: [
@@ -24,8 +29,9 @@ const handler = new OpenAPIHandler(clientRouter, {
           description: [
             "Programmatic interface to a headless Quark Cloud Drive client",
             "driven over CDP via Playwright. Long operations (list_file,",
-            "download_file, import_share_link) stream SSE progress; short",
-            "queries return plain JSON.",
+            "download_file, import_share_link) stream SSE progress when the",
+            "client sends `Accept: text/event-stream`; otherwise they return",
+            "the final result as plain JSON. Short queries return plain JSON.",
           ].join("\n"),
         },
       },
@@ -62,7 +68,27 @@ app.use("/*", async (c, next) => {
   const { matched, response } = await handler.handle(c.req.raw, {
     context: {},
   });
-  if (matched) return c.newResponse(response.body, response);
+  if (matched) {
+    // Long operations stream SSE progress, but plain clients (curl, agents,
+    // `Accept: application/json`) want one JSON answer. Negotiate: only send
+    // the stream when the client explicitly asks for text/event-stream;
+    // otherwise consume it and return the final result as JSON.
+    if (
+      isEventStreamResponse(response) &&
+      !wantsEventStream(c.req.header("Accept") ?? "")
+    ) {
+      try {
+        const value = await consumeEventIteratorSSE(response.body);
+        return c.json(value ?? null);
+      } catch (error) {
+        return c.json(
+          { error: error instanceof Error ? error.message : String(error) },
+          500,
+        );
+      }
+    }
+    return c.newResponse(response.body, response);
+  }
   await next();
 });
 

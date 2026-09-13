@@ -42,6 +42,18 @@ else
     unset MESA_LOADER_DRIVER_OVERRIDE 2>/dev/null || true
 fi
 
+# Normalize the settings in the mounted wine-data volume on every launch.
+# This covers both the initial container autostart and later /restart calls.
+if [ -z "${QUARK_DATA_DIR:-}" ]; then
+    echo "QUARK_DATA_DIR is required to configure Quark settings" >&2
+    exit 1
+fi
+if ! deno run --quiet --allow-read --allow-write \
+    /usr/local/bin/configure-quark-settings.ts "$QUARK_DATA_DIR"; then
+    echo "Failed to configure Quark settings" >&2
+    exit 1
+fi
+
 "$WINESERVER_BIN" -k >/dev/null 2>&1 || true
 cd "$(dirname "$EXE")"
 

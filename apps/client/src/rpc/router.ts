@@ -19,6 +19,14 @@ import { getBrowser, getOperationQueue } from "../browser/context.ts";
 import { Channel } from "../queue/operation-queue.ts";
 import { serverClient } from "../server-client/index.ts";
 import { sleeper } from "./runtime.ts";
+import { assertOperationAllowed } from "../guard.ts";
+import { getRuntimeConfig, updateRuntimeConfig } from "../store/config.ts";
+import {
+  clearLoggedOutStopMarker,
+  getSavedRuntimeStatus,
+  makeRuntimeStatus,
+} from "../monitor/status.ts";
+import { readLoginStateRaw } from "../actions/login-status.ts";
 
 const base = implement(clientContract).use(async ({ next, errors }) => {
   try {
@@ -32,6 +40,51 @@ const base = implement(clientContract).use(async ({ next, errors }) => {
 });
 
 export const clientRouter = base.router({
+  config: base.config.handler(() => getRuntimeConfig()),
+
+  updateConfig: base.updateConfig.handler(({ input }) =>
+    updateRuntimeConfig(input.body)
+  ),
+
+  status: base.status.handler(async () => {
+    const process = await serverClient.status();
+    const status = await sleeper.status() ?? await getSavedRuntimeStatus();
+    const config = await getRuntimeConfig();
+    if (status) {
+      const login = process.state === "stopped" || process.state === "starting"
+        ? "unknown"
+        : readLoginStateRaw();
+      return makeRuntimeStatus({
+        process,
+        login,
+        runningDownloads: status.downloads.running,
+        downloadsCheckedAt: status.downloads.checkedAt,
+        queue: getOperationQueue().status(),
+        idleForMs: status.idleForMs,
+        config,
+        lastCheckAt: status.monitor.lastCheckAt,
+        nextCheckAt: status.monitor.nextCheckAt,
+        lastDecision: status.monitor.lastDecision,
+        lastReason: status.monitor.lastReason,
+        lastError: status.lastError,
+      });
+    }
+    return makeRuntimeStatus({
+      process,
+      login: readLoginStateRaw(),
+      runningDownloads: null,
+      downloadsCheckedAt: null,
+      queue: getOperationQueue().status(),
+      idleForMs: 0,
+      config,
+      lastCheckAt: null,
+      nextCheckAt: null,
+      lastDecision: null,
+      lastReason: null,
+      lastError: null,
+    });
+  }),
+
   version: base.version.handler(() => ({ version: getBrowser().version() })),
 
   queueStatus: base.queueStatus.handler(() => getOperationQueue().status()),
@@ -57,6 +110,10 @@ export const clientRouter = base.router({
           reason: e.reason,
         });
       }),
+      sleeper.events.subscribe(
+        "status",
+        (e) => merged.push({ type: "status", status: e.status }),
+      ),
     ];
 
     // Mirror the server's process stream into the same channel.
@@ -93,21 +150,28 @@ export const clientRouter = base.router({
   }),
 
   loginStatus: base.loginStatus.handler(() => loginStatus()),
-  userInfo: base.userInfo.handler(() => userInfo()),
+  userInfo: base.userInfo.handler(async () => {
+    await assertOperationAllowed("userInfo");
+    return await userInfo();
+  }),
 
   listFile: base.listFile.handler(async ({ input }) => {
+    await assertOperationAllowed("listFile");
     return await listFile(input.query?.path);
   }),
 
   downloadFile: base.downloadFile.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadFile");
     return await downloadFile(input.query.path);
   }),
 
   downloadStatus: base.downloadStatus.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadStatus");
     return await downloadStatus(input.query?.status);
   }),
 
   updateDownloadStatus: base.updateDownloadStatus.handler(async ({ input }) => {
+    await assertOperationAllowed("updateDownloadStatus");
     return await updateDownloadStatus(
       input.body.taskName,
       input.body.operation,
@@ -115,6 +179,7 @@ export const clientRouter = base.router({
   }),
 
   importShareLink: base.importShareLink.handler(async ({ input }) => {
+    await assertOperationAllowed("importShareLink");
     return await importShareLink(input.body.url);
   }),
 
@@ -125,7 +190,11 @@ export const clientRouter = base.router({
 
     status: base.manager.status.handler(() => serverClient.status()),
 
-    start: base.manager.start.handler(() => serverClient.start()),
+    start: base.manager.start.handler(async () => {
+      await clearLoggedOutStopMarker();
+      sleeper.clearDecision();
+      return await serverClient.start();
+    }),
 
     stop: base.manager.stop.handler(() => serverClient.stop()),
 

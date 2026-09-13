@@ -11,6 +11,9 @@ downloads
 wineprefix.tar.zst
 .prepared
 
+# Spark deb deps downloaded by scripts/download-debs.sh
+.deb-cache
+
 # Python / build cache
 __pycache__
 

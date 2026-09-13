@@ -43,11 +43,11 @@ export const IDLE_MINIMIZE_AFTER_MS = envInt(
 );
 export const IDLE_STOP_AFTER_MS = envInt(
   "CLIENT_IDLE_STOP_AFTER_MS",
-  1_800_000,
+  900_000,
 );
 export const IDLE_CHECK_INTERVAL_MS = envInt(
   "CLIENT_IDLE_CHECK_INTERVAL_MS",
-  10_000,
+  30_000,
 );
 
 // Operation queue defaults.

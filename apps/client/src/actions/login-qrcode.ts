@@ -1,4 +1,5 @@
 import type { BrowserContext, Page } from "playwright";
+import { chromium } from "playwright";
 import {
   QUARK_HOME_PAGE_URL,
   QUARK_LOGIN_PAGE_URL,
@@ -8,6 +9,10 @@ import { findPageByUrl } from "../utils.ts";
 import { log } from "../logger.ts";
 import { getBrowserContext } from "../browser/page-utils.ts";
 import { getOperationQueue } from "../browser/context.ts";
+import { getBrowser, setBrowser } from "../browser/context.ts";
+import { CDP_URL } from "../env.ts";
+import { ensureQuarkAwake } from "../monitor/wake.ts";
+import { clearLoggedOutStopMarker } from "../monitor/status.ts";
 
 async function getMemberPage(
   context: BrowserContext,
@@ -72,6 +77,20 @@ async function screenshotQRCode(
 export function loginQRCode(): Promise<Uint8Array> {
   return getOperationQueue().run("loginQRCode", {}, async () => {
     log.debug("loginQRCode: start");
+    // Explicit QR requests are the escape hatch from stopWhenLoggedOut.
+    await clearLoggedOutStopMarker();
+    await ensureQuarkAwake({ force: true });
+
+    // Normally connect.ts already owns this CDP connection. When
+    // stopWhenLoggedOut is enabled it intentionally leaves the reconnect loop
+    // disconnected, so an explicit QR request attaches a short-lived owner.
+    try {
+      getBrowser();
+    } catch {
+      const browser = await chromium.connectOverCDP(CDP_URL);
+      setBrowser(browser);
+      browser.on("disconnected", () => setBrowser(null));
+    }
 
     const context = getBrowserContext();
     const homePage = findPageByUrl(context, QUARK_HOME_PAGE_URL);

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SERVER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$SERVER_DIR/../.." && pwd)"
 IMAGE="${IMAGE:-quark-docker:install-debug}"
 CONTAINER="${CONTAINER:-quark-install-debug}"
 VNC_PORT="${VNC_PORT:-5900}"
-OUT_DIR="${OUT_DIR:-$ROOT_DIR/.prepared}"
-OUT_FILE="${OUT_FILE:-$ROOT_DIR/wineprefix.tar.zst}"
+OUT_DIR="${OUT_DIR:-$SERVER_DIR/.prepared}"
+OUT_FILE="${OUT_FILE:-$SERVER_DIR/wineprefix.tar.zst}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-1800}"
 
 docker_cmd=(sudo docker)
@@ -14,8 +15,11 @@ docker_cmd=(sudo docker)
 cd "$ROOT_DIR"
 mkdir -p "$OUT_DIR"
 
+echo "Ensuring Spark deb dependencies are available..."
+"$SERVER_DIR/scripts/download-debs.sh"
+
 echo "Building installer/VNC image: $IMAGE"
-"${docker_cmd[@]}" build --target install-debug -t "$IMAGE" .
+"${docker_cmd[@]}" build -f "$SERVER_DIR/Dockerfile" --target install-debug -t "$IMAGE" .
 
 echo "Starting installer container: $CONTAINER"
 "${docker_cmd[@]}" rm -f "$CONTAINER" >/dev/null 2>&1 || true

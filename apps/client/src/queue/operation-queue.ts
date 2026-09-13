@@ -166,7 +166,9 @@ export class OperationQueue {
     gen: (signal: AbortSignal) => AsyncGenerator<TYield, TReturn>,
   ): Promise<AsyncGenerator<TYield, TReturn>> {
     const channel = new Channel<
-      { done: false; value: TYield } | { done: true; value: TReturn }
+      | { done: false; value: TYield }
+      | { done: true; value: TReturn }
+      | { failed: true; error: unknown }
     >();
 
     const taskPromise = this.run(label, opts, async (signal) => {
@@ -181,12 +183,21 @@ export class OperationQueue {
           channel.push({ done: false, value: step.value });
         }
       } catch (err) {
-        channel.push({ done: true, value: err as TReturn });
+        // Keep failures distinct from the generator's return value. Treating
+        // an Error as TReturn makes the HTTP/SSE layer try to validate it as
+        // the success schema and hides the actual browser failure behind a
+        // misleading EVENT_ITERATOR_VALIDATION_FAILED response.
+        channel.push({ failed: true, error: err });
         throw err;
       } finally {
         channel.close();
       }
     });
+    // The relay owns the error observed by the consumer, so keep the queue
+    // promise's rejection marked as handled as well. Without this, a browser
+    // failure is correctly rethrown by the relay but still becomes an
+    // unhandled rejection in Deno's test/runtime process.
+    taskPromise.catch(() => {});
 
     const relay = async function* (): AsyncGenerator<TYield, TReturn> {
       try {
@@ -197,6 +208,7 @@ export class OperationQueue {
             await taskPromise;
             throw new Error("stream ended without a result");
           }
+          if ("failed" in item) throw item.error;
           if (item.done) return item.value;
           yield item.value;
         }

@@ -5,6 +5,36 @@ import { findPageByUrl } from "../utils.ts";
 import { QUARK_HOME_PAGE_URL } from "../consts.ts";
 import { log } from "../logger.ts";
 
+const TOP_NAV_ITEM_SELECTOR = "div.user-divider > .cloud-navigation-badge";
+
+/**
+ * Select one of Quark's top-level navigation tabs by its visible label.
+ *
+ * The navigation order is not part of the UI contract: newer Quark builds
+ * can insert or reorder items. The old implementation used children.item(0)
+ * and children.item(1), which could send a file-list operation to Transport.
+ */
+export async function selectTopNavigation(
+  page: Page,
+  label: "首页" | "传输",
+  options: { force?: boolean } = {},
+): Promise<void> {
+  const item = page.locator(TOP_NAV_ITEM_SELECTOR)
+    .filter({ hasText: label })
+    .first();
+  const nav = item.locator(".cloud-navigation-list").first();
+
+  await item.waitFor({ state: "visible", timeout: 10_000 });
+  const selected = item.locator(".cloud-navigation-list-selected").first();
+  if (!options.force && await selected.count() > 0) return;
+
+  log.debug(`selectTopNavigation: selecting "${label}"`);
+  // dispatchEvent keeps the event on the framework-owned navigation element
+  // and avoids relying on the geometric center of the icon/text wrapper.
+  await nav.dispatchEvent("click");
+  await selected.waitFor({ state: "attached", timeout: 10_000 });
+}
+
 /** Returns the hash path of the page's URL, without search params (e.g. "/list/all"). */
 export function getPageRoute(page: Page): string {
   const hash = page.url().split("#")[1] ?? "";
@@ -152,11 +182,17 @@ export async function scrollListToRow(
   for (let hop = 0; hop < maxHops; hop++) {
     const count = await candidates().count();
     if (count > 0) {
+      const row = candidates().first();
+      // Virtualized tables may recycle the DOM row between the count check
+      // and the caller's action. Materialize it and confirm visibility while
+      // it is still the current match.
+      await row.scrollIntoViewIfNeeded();
+      await row.waitFor({ state: "visible", timeout: settleTimeoutMs });
       log.debug(
         `scrollListToRow: found "${targetName}" after ${hop} hops ` +
           `(${count} candidate(s))`,
       );
-      return candidates().first();
+      return row;
     }
     const scrollResult = await scrollOneViewportAndSettle(
       page,

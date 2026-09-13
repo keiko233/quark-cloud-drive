@@ -37,6 +37,9 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
   assertEquals(
     optedIn,
     [
+      "config",
+      "updateConfig",
+      "status",
       "version",
       "queueStatus",
       "loginQRCode",

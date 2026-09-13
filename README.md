@@ -1,23 +1,21 @@
 # quark-cloud-drive
 
-Monorepo for automating Quark Cloud Drive. It runs the desktop client inside
-Docker under Wine/Electron with Xorg + VNC, and drives it headlessly over the
-Chrome DevTools Protocol (CDP) from a Deno service. A Deno 2 workspace with two
-apps and one shared contract package:
+Monorepo for the Quark Cloud Drive automation stack. It merges two former
+standalone projects into a single repo:
 
-- **`apps/server`** — thin process manager + CDP proxy for the Wine/Electron
-  Quark instance (Xorg + x11vnc). Exposes process lifecycle (`/start`, `/stop`,
-  `/restart`), window control (`/minimize`, `/restore`), status, and a live
-  `/events` SSE stream. There is **no** idle/sleep policy here — that's the
-  client's job.
-- **`apps/client`** — the remote client. Connects to the browser over CDP via
-  Playwright, exposes a typed HTTP API **and** an MCP server, serves noVNC
-  (`/vnc`) and Chrome DevTools (`/devtools`) pages, owns the idle policy and
-  guard, and persists task history plus runtime config/status in Deno KV.
-- **`packages/contract`** — the shared oRPC contract (zod schemas) both apps
-  build on, so RPC, OpenAPI, and MCP all come from one definition.
+- **`quark-docker/`** — a Docker image that runs the Quark Cloud Drive desktop
+  client under Wine/Electron with Xorg + VNC/noVNC, plus a Python manager
+  (FastAPI) providing a REST API: process lifecycle (`/start`, `/stop`,
+  `/restart`), window control (`/minimize`, `/restore`), status, and a two-stage
+  idle/monitor CDP proxy (9223 → 9222).
 
-The top-level `docker-compose.yaml` runs both apps together on a shared network.
+- **`quark-cdp-client/`** — a Deno service that connects to the browser over CDP
+  (the one running inside `quark-docker`) and exposes a small HTTP API for Quark
+  Cloud Drive. It calls the manager's `/start` before each business request and
+  re-exposes `/manager/*` passthrough routes.
+
+The top-level `docker-compose.yaml` orchestrates both services together on a
+shared network.
 
 ## Structure
 
@@ -51,10 +49,10 @@ docker compose up --build
 
 Services:
 
-| Container      | What it runs                     | Host mapping                                    |
-| -------------- | -------------------------------- | ----------------------------------------------- |
-| `quark-server` | Quark under Wine + manager + CDP | VNC `:5900`, CDP proxy `:9223`, manager `:8080` |
-| `quark-client` | Deno remote client (API/MCP/UI)  | HTTP `:3000`                                    |
+| Container          | What it runs                   | Host mapping                                                                       |
+| ------------------ | ------------------------------ | ---------------------------------------------------------------------------------- |
+| `quark-docker`     | Quark under Wine + manager API | VNC `:5900`, noVNC `:6080`, Manager `:8080`, CDP `:9223` (`REMOTE_DEBUGGING_PORT`) |
+| `quark-cdp-client` | Deno CDP -> HTTP API           | HTTP `:3000`                                                                       |
 
 Notes:
 

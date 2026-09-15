@@ -3,7 +3,7 @@
 #
 # Build context must be the repository root so the workspace members
 # (`@quark/contract`) resolve via ./deno.json.
-FROM denoland/deno:2.2.8
+FROM denoland/deno:2.9.6
 
 # noVNC UI assets served by the client at /vnc/ (the WebSocket→VNC proxy is
 # in-process Deno, so websockify/socat are not needed).

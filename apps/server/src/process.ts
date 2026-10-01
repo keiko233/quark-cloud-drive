@@ -217,7 +217,21 @@ export class ProcessManager {
 
   async stop(): Promise<ServerStatus> {
     log.info("stopping Quark");
-    const targetPgid = this.pgid ?? (this.proc ? this.resolvePgid() : null);
+    const candidate = this.pgid ??
+      (this.proc ? readProcessGroup(this.proc.pid) : null);
+    const targetPgid = isOwnProcessGroup(candidate, readProcessGroup(Deno.pid))
+      ? candidate
+      : null;
+    if (candidate !== null && targetPgid === null) {
+      // The launcher inherited the container's group instead of creating its
+      // own. `kill(-pgid)` would then mean `kill(0)`/`kill(-1)` and take out
+      // the X server, x11vnc and everything else the entrypoint started, so
+      // Quark could never start again. Stage 2/3 below still stop Quark.
+      log.warn(
+        `not signalling process group ${candidate}: it is not owned by the ` +
+          "launcher (shared with the container init); using by-name kills only",
+      );
+    }
 
     // Stage 1: process-group kill (standard runtime).
     if (targetPgid !== null) {
@@ -365,20 +379,8 @@ export class ProcessManager {
 
   private resolvePgid(): number | null {
     if (!this.proc) return null;
-    try {
-      const stat = Deno.readLinkSync(`/proc/${this.proc.pid}`);
-      return Number(stat);
-    } catch {
-      // fall back to reading /proc/<pid>/stat's pgrp (field 5)
-      try {
-        const stat = Deno.readTextFileSync(`/proc/${this.proc.pid}/stat`);
-        // field 4 is ppid, field 5 is pgrp (process group id)
-        const parts = stat.split(" ");
-        return Number(parts[4]);
-      } catch {
-        return null;
-      }
-    }
+    const pgid = readProcessGroup(this.proc.pid);
+    return isOwnProcessGroup(pgid, readProcessGroup(Deno.pid)) ? pgid : null;
   }
 
   private async findQuarkWindows(): Promise<string[]> {
@@ -451,6 +453,39 @@ export class ProcessManager {
 }
 
 // ── tiny process helpers ─────────────────────────────────────────────────────
+
+/**
+ * Process group of `pid` from /proc/<pid>/stat, or null when it cannot be read.
+ * The pgrp is field 5, but `comm` is only parenthesised — it may itself contain
+ * spaces and parentheses — so anchor the parse on the last ")".
+ */
+export function readProcessGroup(pid: number): number | null {
+  try {
+    const stat = Deno.readTextFileSync(`/proc/${pid}/stat`);
+    const pgid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[2]);
+    return Number.isInteger(pgid) && pgid > 0 ? pgid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when `pgid` is a group the launcher created for itself and is therefore
+ * safe to signal with `kill(-pgid)`.
+ *
+ * Everything the container entrypoint starts — the X server, x11vnc, the CDP
+ * proxy, this manager — shares PID 1's group, and a spawned launcher inherits
+ * it. Signalling that group means `kill(0)` / `kill(-1)`: it reaches every
+ * process in the container, so Xvfb and x11vnc die with it and Quark can never
+ * start again until the pod is recreated.
+ */
+export function isOwnProcessGroup(
+  pgid: number | null,
+  ownPgid: number | null,
+): pgid is number {
+  if (pgid === null || !Number.isInteger(pgid) || pgid <= 1) return false;
+  return ownPgid === null || pgid !== ownPgid;
+}
 
 async function run(
   cmd: string[],

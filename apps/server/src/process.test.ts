@@ -1,5 +1,37 @@
 import { assertEquals } from "@std/assert";
-import { ProcessManager } from "./process.ts";
+import {
+  isOwnProcessGroup,
+  ProcessManager,
+  readProcessGroup,
+} from "./process.ts";
+
+Deno.test("isOwnProcessGroup refuses group ids shared with the container init", () => {
+  // The entrypoint starts X, x11vnc and the manager in PID 1's group, and a
+  // launcher inherits it. Signalling it degenerates into kill(0)/kill(-1).
+  assertEquals(isOwnProcessGroup(1, 1), false);
+  assertEquals(isOwnProcessGroup(0, 0), false);
+  assertEquals(isOwnProcessGroup(-1, 1), false);
+  assertEquals(isOwnProcessGroup(NaN, 1), false);
+  assertEquals(isOwnProcessGroup(null, 1), false);
+  // A group the launcher created for itself is signalable.
+  assertEquals(isOwnProcessGroup(1175, 1), true);
+  assertEquals(isOwnProcessGroup(1175, 42), true);
+});
+
+Deno.test("readProcessGroup parses pgrp and children inherit it", async () => {
+  const own = readProcessGroup(Deno.pid);
+  assertEquals(typeof own, "number");
+
+  const child = new Deno.Command("sleep", { args: ["10"] }).spawn();
+  try {
+    // This inheritance is exactly why the group must not be signalled when the
+    // launcher was spawned without creating a group of its own.
+    assertEquals(readProcessGroup(child.pid), own);
+  } finally {
+    child.kill();
+    await child.status;
+  }
+});
 
 Deno.test("ProcessManager starts in stopped state with zero counters", async () => {
   const pm = new ProcessManager();

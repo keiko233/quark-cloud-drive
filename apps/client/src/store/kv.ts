@@ -77,6 +77,10 @@ export class KvStore {
   async setSetting<T>(key: string, value: T): Promise<void> {
     await this.ensure().set(["settings", key], value);
   }
+
+  async deleteSetting(key: string): Promise<void> {
+    await this.ensure().delete(["settings", key]);
+  }
 }
 
 /** Singleton shared by the queue event hook and the router. */

@@ -23,8 +23,10 @@ import { assertOperationAllowed } from "../guard.ts";
 import { getRuntimeConfig, updateRuntimeConfig } from "../store/config.ts";
 import {
   clearLoggedOutStopMarker,
+  clearManualStop,
   getSavedRuntimeStatus,
   makeRuntimeStatus,
+  markManualStop,
 } from "../monitor/status.ts";
 import { readLoginStateRaw } from "../actions/login-status.ts";
 
@@ -191,14 +193,25 @@ export const clientRouter = base.router({
     status: base.manager.status.handler(() => serverClient.status()),
 
     start: base.manager.start.handler(async () => {
+      await clearManualStop();
       await clearLoggedOutStopMarker();
       sleeper.clearDecision();
       return await serverClient.start();
     }),
 
-    stop: base.manager.stop.handler(() => serverClient.stop()),
+    stop: base.manager.stop.handler(async () => {
+      // An explicit stop must stick: without this marker the reconnect loop
+      // would wake Quark again within seconds.
+      await markManualStop();
+      return await serverClient.stop();
+    }),
 
-    restart: base.manager.restart.handler(() => serverClient.restart()),
+    restart: base.manager.restart.handler(async () => {
+      await clearManualStop();
+      await clearLoggedOutStopMarker();
+      sleeper.clearDecision();
+      return await serverClient.restart();
+    }),
 
     minimize: base.manager.minimize.handler(() => serverClient.minimize()),
 

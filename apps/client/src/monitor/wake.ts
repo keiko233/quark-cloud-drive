@@ -4,7 +4,7 @@
 import { CDP_READY_POLL_MS, CDP_READY_TIMEOUT_MS, CDP_URL } from "../env.ts";
 import { serverClient } from "../server-client/index.ts";
 import { getRuntimeConfig } from "../store/config.ts";
-import { getSavedRuntimeStatus } from "./status.ts";
+import { getSavedRuntimeStatus, isManualStopActive } from "./status.ts";
 
 /** One-shot CDP liveness check via the server's CDP proxy. */
 export async function isCdpReachable(timeoutMs = 1500): Promise<boolean> {
@@ -47,13 +47,24 @@ export async function waitForCdpReady(
 // Concurrency-safe wake: dedupe parallel callers onto one in-flight promise.
 let pendingWake: Promise<void> | null = null;
 
-/** True when the monitor intentionally stopped a logged-out instance. */
-export async function isAutoWakeBlocked(): Promise<boolean> {
+/** Why auto-wake is suppressed, or null when waking is allowed. */
+export async function autoWakeBlockReason(): Promise<string | null> {
+  if (await isManualStopActive()) {
+    return "Quark was stopped explicitly; POST /manager/start to wake it";
+  }
   const config = await getRuntimeConfig();
-  if (!config.stopWhenLoggedOut) return false;
+  if (!config.stopWhenLoggedOut) return null;
   const status = await getSavedRuntimeStatus();
-  return status?.monitor.lastDecision === "stop" &&
+  const stoppedWhileLoggedOut = status?.monitor.lastDecision === "stop" &&
     status.monitor.lastReason === "login renderer detected";
+  return stoppedWhileLoggedOut
+    ? "the monitor stopped Quark while it was logged out"
+    : null;
+}
+
+/** True when a previous decision intentionally stopped Quark. */
+export async function isAutoWakeBlocked(): Promise<boolean> {
+  return await autoWakeBlockReason() !== null;
 }
 
 export function ensureQuarkAwake(

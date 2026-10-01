@@ -107,3 +107,23 @@ export async function clearLoggedOutStopMarker(): Promise<void> {
     },
   });
 }
+
+const MANUAL_STOP_KEY = "runtime.manualStop";
+
+/**
+ * Marker armed by an explicit /manager/stop. While it is set the client does
+ * not auto-wake Quark — otherwise the reconnect loop (and every API call that
+ * wakes on demand) would undo the operator's stop within seconds. An explicit
+ * /manager/start or /manager/restart clears it again.
+ */
+export async function isManualStopActive(): Promise<boolean> {
+  return await kvStore.getSetting<unknown>(MANUAL_STOP_KEY) !== null;
+}
+
+export async function markManualStop(): Promise<void> {
+  await kvStore.setSetting(MANUAL_STOP_KEY, { at: Date.now() });
+}
+
+export async function clearManualStop(): Promise<void> {
+  await kvStore.deleteSetting(MANUAL_STOP_KEY);
+}

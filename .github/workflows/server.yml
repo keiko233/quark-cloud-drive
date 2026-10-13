@@ -38,7 +38,7 @@ jobs:
 
       - name: Restore Spark deb cache
         id: deb-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/server/.deb-cache
           key: spark-debs-${{ hashFiles('apps/server/scripts/download-debs.sh') }}
@@ -56,7 +56,7 @@ jobs:
 
       - name: Restore Wine prefix cache
         id: wp-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: apps/server/wineprefix.tar.zst
           key: ${{ steps.wp-key.outputs.key }}

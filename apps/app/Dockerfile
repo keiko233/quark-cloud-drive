@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # apps/app — the single image for the whole app.
 #
-# One container, one entrypoint: the Wine/Electron Quark host plus the Deno
+# One container, one entrypoint: the Wine/Electron Quark host plus the Bun
 # runtime that owns process management, the CDP proxy, the manager API, the
 # business API/MCP surface, the noVNC page and the idle policy. There is no
 # separate client container and no runtime split.
@@ -9,6 +9,10 @@
 # Build context must be the repository root (the Dockerfile copies the whole
 # workspace so the @quark/* packages resolve). The 1.3 GB wineprefix.tar.zst is
 # a build artifact (gitignored); keep it under apps/app/.
+# The runtime ships as a static binary copied out of the official image, so the
+# app keeps the Wine base and gains no second distribution.
+FROM oven/bun:1.4.3 AS bun
+
 FROM scottyhardy/docker-wine:latest AS base
 
 # Common runtime for both the manual installer environment and the final image.
@@ -108,11 +112,10 @@ Section "Screen"
 EndSection
 XORGEOF
 
-# Deno runtime for the whole app. Pinned: playwright's CDP attach depends on
-# the driver behaviour of this exact release.
-ARG DENO_VERSION=2.8.2
-RUN curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s "v${DENO_VERSION}" \
-    && rm -rf /root/.deno
+# Bun runtime for the whole app. Pinned: every migration spike, the test suite
+# and the CDP proxy's socket behaviour were verified against this exact release.
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=bun /usr/local/bin/bunx /usr/local/bin/bunx
 
 FROM base AS install-debug
 
@@ -152,22 +155,30 @@ COPY ./apps/app/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
 COPY ./apps/app/scripts/configure-quark-settings.ts /usr/local/bin/configure-quark-settings.ts
 
 # The app + workspace sources. The image runs with cwd=/opt/quark-app, which is
-# also where the Deno KV file lands by default (./data/kv.sqlite3).
+# also where the KV file lands by default (./data/kv.sqlite3).
 WORKDIR /opt/quark-app
-COPY ./deno.json /opt/quark-app/deno.json
+
+# Manifests first, so the dependency layer only rebuilds when one of them moves.
+# playwright is a runtime dependency (CDP attach) but never launches a browser,
+# so the browser download is skipped.
+COPY ./package.json ./bun.lock ./.npmrc /opt/quark-app/
+COPY ./apps/app/package.json /opt/quark-app/apps/app/package.json
+COPY ./packages/config/package.json /opt/quark-app/packages/config/package.json
+COPY ./packages/contract/package.json /opt/quark-app/packages/contract/package.json
+COPY ./packages/drive/package.json /opt/quark-app/packages/drive/package.json
+COPY ./packages/manager/package.json /opt/quark-app/packages/manager/package.json
+COPY ./packages/service/package.json /opt/quark-app/packages/service/package.json
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+RUN bun install --frozen-lockfile --production
+
 # Only the runtime sources. The 1.3 GB wineprefix.tar.zst is bind-mounted from
 # the build context above, and installer.exe/.deb-cache are build-time only, so
 # baking ./apps/app wholesale would add ~1.5 GB to the image for nothing.
-COPY ./apps/app/deno.json /opt/quark-app/apps/app/deno.json
 COPY ./apps/app/src /opt/quark-app/apps/app/src
 COPY ./apps/app/download-client.ts /opt/quark-app/apps/app/download-client.ts
 COPY ./packages /opt/quark-app/packages
 
-# Pre-fetch the npm/JSR deps at build time so the container starts without
-# network stalls.
-RUN deno cache /opt/quark-app/apps/app/src/main.ts \
-    && deno cache /opt/quark-app/apps/app/download-client.ts \
-    && chmod +x /usr/local/bin/run-quark.sh \
+RUN chmod +x /usr/local/bin/run-quark.sh \
                 /usr/local/bin/launch-quark.sh
 
 # Ports: 3000 public API + OpenAPI + MCP + noVNC page, 8080 manager API,

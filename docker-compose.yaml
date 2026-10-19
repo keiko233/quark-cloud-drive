@@ -28,7 +28,7 @@ services:
       QUARK_API_PORT: "${QUARK_API_PORT:-8080}"
       QUARK_AUTOSTART: "${QUARK_AUTOSTART:-true}"
 
-      # Deno KV (task history + runtime settings) lives in the app-data volume.
+      # The KV store (task history + runtime settings) lives in the app-data volume.
       QUARK_KV_PATH: "${QUARK_KV_PATH:-./data/kv.sqlite3}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
 
@@ -52,7 +52,7 @@ services:
       # 6.6.7 installer crashes before creating a visible Electron window.
       - ./wine-data-spark:/opt/spark-bottle/drive_c/users/wineuser/Application Data/quark-cloud-drive
       - ./downloads:/opt/spark-bottle/drive_c/users/wineuser/Downloads
-      # Deno KV (task/download history) survives container restarts.
+      # The KV store (task/download history) survives container restarts.
       - app-data:/opt/quark-app/data
 
     security_opt:

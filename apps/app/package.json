@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "dev": "bun --watch src/main.ts",
+    "download-client": "bun run download-client.ts",
+    "playwright:install": "playwright install --with-deps chromium"
+  },
   "dependencies": {
     "@quark/config": "workspace:*",
     "@quark/drive": "workspace:*",

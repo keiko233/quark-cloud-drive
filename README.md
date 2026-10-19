@@ -3,7 +3,7 @@
 Monorepo for the Quark Cloud Drive automation stack.
 
 **One image, one entrypoint, one process.** The container runs the Quark Cloud
-Drive desktop client under Wine/Electron with Xorg + x11vnc, and a single Deno
+Drive desktop client under Wine/Electron with Xorg + x11vnc, and a single Bun
 process owns everything else: process lifecycle, the CDP proxy, the manager API,
 the business API + MCP + noVNC surface, and the idle policy. There is no
 separate client container and no runtime split.
@@ -33,7 +33,7 @@ development against a containerized manager.
 ```
 quark-cloud-drive/
 ├── docker-compose.yaml        # one service
-├── deno.json                  # workspace + tasks (fmt/lint/check/test)
+├── package.json               # bun workspaces + tasks (check/test)
 ├── .env.example               # all tunable env vars
 ├── apps/
 │   └── app/                   # the single entrypoint + Dockerfile
@@ -69,8 +69,8 @@ Notes:
 - On every Quark launch, the server normalizes the mounted wine-data settings:
   downloads are enabled at `C:\\users\\wineuser\\Downloads` and the desktop
   floating window remains disabled. Other Quark settings are preserved.
-- The Deno KV store (task history + runtime settings) survives restarts via the
-  `app-data` volume.
+- The KV store (task history + runtime settings, a SQLite file under
+  `QUARK_KV_PATH`) survives restarts via the `app-data` volume.
 - `/manager/*` on `:3000` and the manager API on `:8080` are the same process.
   `:8080` exists for external consumers and for host-side development.
 
@@ -84,7 +84,7 @@ image when iterating on API code.
 
 ```bash
 docker compose up -d --build
-QUARK_MANAGER_MODE=http deno task dev    # host-side service with --watch
+QUARK_MANAGER_MODE=http bun run dev      # host-side service with --watch
 ```
 
 Stop the container's own service port first, or set `SERVER_PORT=3001` — the
@@ -116,7 +116,7 @@ Full list in `.env.example`; every default lives in
 - Wiring: `QUARK_MANAGER_MODE` (`embedded` | `http`), `QUARK_MANAGER_URL`,
   `SERVER_PORT` (3000), `CDP_URL`, `VNC_URL`.
 - Policy/queue: `CLIENT_IDLE_*` (first-run monitor defaults), `QUEUE_*`. After
-  first boot, `/config` in Deno KV is authoritative and can be changed without
+  first boot, `/config` in the KV store is authoritative and can be changed without
   restarting.
 - Persistence/logging: `QUARK_KV_PATH`, `LOG_LEVEL`.
 
@@ -173,7 +173,8 @@ Full list in `.env.example`; every default lives in
 - **DevTools** — `/devtools` target picker; `/devtools/ws/*` bridges the
   DevTools frontend WebSocket to the CDP proxy; `/devtools/http/*` proxies the
   browser-hosted frontend assets.
-- **History** — `/history` returns recent task/download records from Deno KV
+- **History** — `/history` returns recent task/download records from the KV
+  store
   (ops convenience, not part of the contract).
 
 ### Runtime policy
@@ -192,16 +193,16 @@ denied while Quark is `starting`/stopped or when their name is in
 ## Checks
 
 ```bash
-deno task check    # fmt + lint + typecheck
-deno task test     # unit + contract + mcp tests (Deno KV)
+bun run check      # tsc --noEmit
+bun run test       # unit + contract + mcp tests
 ```
 
 The `list-file` API integration test requires a real Quark page and an active
-login, so it is skipped by default and does not run in CI's `deno task test`.
+login, so it is skipped by default and does not run in CI's `bun run test`.
 After starting the stack locally, run it explicitly:
 
 ```bash
-deno task test:e2e
+bun run test:e2e
 ```
 
 The test verifies plain JSON responses for the root and a direct `fid` lookup,
@@ -219,7 +220,7 @@ without a Quark/Wine login; if CI later provides a login session, set
 `.github/workflows/app.yml` builds and pushes the single image to GHCR on push
 to `main`:
 
-- `ghcr.io/keiko233/quark-cloud-drive` — Wine prefix + Quark + the Deno app.
+- `ghcr.io/keiko233/quark-cloud-drive` — Wine prefix + Quark + the Bun app.
 
 It replaces the former `quark-server` and `quark-client` images, which are no
 longer built.

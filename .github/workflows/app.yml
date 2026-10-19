@@ -23,17 +23,20 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Deno
-        uses: denoland/setup-deno@v2
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          deno-version: v2.x
+          bun-version: 1.4.3
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
 
       - name: Install Playwright Chromium
-        run: deno task postinstall
+        run: bun run playwright:install
         working-directory: apps/app
 
       - name: Download Quark installer
-        run: deno task download-client
+        run: bun run download-client
         working-directory: apps/app
 
       - name: Restore Spark deb cache

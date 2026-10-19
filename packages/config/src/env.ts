@@ -132,7 +132,7 @@ export const QUEUE_MAX_WAITING = envInt("QUEUE_MAX_WAITING", 100);
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
-/** Deno KV (task/download history + runtime settings) SQLite path. */
+/** KV store (task/download history + runtime settings) SQLite path. */
 export const KV_PATH = env["QUARK_KV_PATH"] ??
   env["CLIENT_KV_PATH"] ??
   "./data/kv.sqlite3";

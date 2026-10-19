@@ -288,8 +288,8 @@ echo "--- Launching server (API on :${QUARK_API_PORT:-8080}) ---"
 # the thin process manager. It will exec launch-quark.sh to start the actual
 # Quark process group; that one lives in its own session so we can kill it
 # cleanly.
-if ! command -v deno >/dev/null 2>&1; then
-    echo "ERROR: deno is required for the server"
+if ! command -v bun >/dev/null 2>&1; then
+    echo "ERROR: bun is required for the server"
     tail -f /dev/null
 fi
 export EXE
@@ -351,4 +351,4 @@ fi
 # The single entrypoint owns everything: process manager, CDP proxy, the
 # manager API, the business API/MCP surface and the renderer attach loop.
 cd /opt/quark-app
-exec deno run -A --unstable-kv /opt/quark-app/apps/app/src/main.ts
+exec bun run /opt/quark-app/apps/app/src/main.ts

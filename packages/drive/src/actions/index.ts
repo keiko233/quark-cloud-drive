@@ -6,5 +6,6 @@ export { importShareLink } from "./import-share-link.ts";
 export { listFile } from "./list-file.ts";
 export { loginStatus, readLoginStateRaw } from "./login-status.ts";
 export { taskList } from "./task-list.ts";
+export { fetchQuarkTaskCountsInBrowser } from "./task-api.ts";
 export { updateTask } from "./update-task.ts";
 export { userInfo } from "./user-info.ts";

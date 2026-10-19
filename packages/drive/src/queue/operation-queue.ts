@@ -196,7 +196,7 @@ export class OperationQueue {
     // The relay owns the error observed by the consumer, so keep the queue
     // promise's rejection marked as handled as well. Without this, a browser
     // failure is correctly rethrown by the relay but still becomes an
-    // unhandled rejection in Deno's test/runtime process.
+    // unhandled rejection in the test/runtime process.
     taskPromise.catch(() => {});
 
     const relay = async function* (): AsyncGenerator<TYield, TReturn> {

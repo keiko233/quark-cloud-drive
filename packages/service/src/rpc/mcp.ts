@@ -12,6 +12,7 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import type { ZodRawShapeCompat } from "@modelcontextprotocol/sdk/server/zod-compat.js";
 import { call, isProcedure } from "@orpc/server";
 import type { AnyRouter } from "@orpc/server";
 import { clientRouter } from "./router.ts";
@@ -69,7 +70,7 @@ function mcpArgsFor(
   inputSchema: unknown,
   method: string | undefined,
 ): {
-  inputSchema: unknown;
+  inputSchema: ZodRawShapeCompat | undefined;
   toInput: (args: Record<string, unknown>) => unknown;
 } {
   // The contract input is a ZodObject with detail keys.
@@ -86,7 +87,7 @@ function mcpArgsFor(
   const flat = shape[key] ?? shape[keys[0]];
 
   return {
-    inputSchema: flat,
+    inputSchema: flat as ZodRawShapeCompat | undefined,
     toInput: (args) => ({ [key]: args }),
   };
 }
@@ -128,7 +129,6 @@ function registerRouterTools(mcp: McpServer, router: AnyRouter): number {
             description,
             inputSchema,
           },
-          // deno-lint-ignore no-explicit-any
           async (args: any, extra: any) => {
             try {
               const result = await call(
@@ -206,11 +206,10 @@ const sessions = new Map<
 
 /** Build a fresh McpServer with every MCP-opted-in procedure registered. */
 function createMcpServer(): McpServer {
-  const mcp = new McpServer({
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
-    instructions: SERVER_INSTRUCTIONS,
-  });
+  const mcp = new McpServer(
+    { name: SERVER_NAME, version: SERVER_VERSION },
+    { instructions: SERVER_INSTRUCTIONS },
+  );
   const count = registerRouterTools(mcp, clientRouter);
   log.info(`MCP: registered ${count} tools`);
   return mcp;

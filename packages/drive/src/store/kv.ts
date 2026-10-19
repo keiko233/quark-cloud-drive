@@ -64,7 +64,7 @@ export class KvStore {
 
   async recordTask(record: TaskRecord): Promise<void> {
     const db = this.ensure();
-    db.query<never, [string, string, number, string]>(
+    db.query<never, [string, number, string]>(
       `insert into app_kv (ns, id, ts, value) values ('tasks', ?, ?, ?)
        on conflict (ns, id) do update set ts = excluded.ts, value = excluded.value`,
     ).run(record.key, record.startedAt, JSON.stringify(record));
@@ -76,7 +76,7 @@ export class KvStore {
   }
 
   async listTasks(limit = 100): Promise<TaskRecord[]> {
-    const rows = this.ensure().query<{ value: string }, never>(
+    const rows = this.ensure().query<{ value: string }, []>(
       "select value from app_kv where ns = 'tasks' order by ts asc, id asc",
     ).all();
     const records = rows.map((row) => JSON.parse(row.value) as TaskRecord);

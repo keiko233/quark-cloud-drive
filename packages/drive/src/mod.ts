@@ -9,6 +9,7 @@ export {
   downloadFile,
   downloadTaskList,
   fileInfo,
+  fetchQuarkTaskCountsInBrowser,
   importShareLink,
   listFile,
   loginStatus,

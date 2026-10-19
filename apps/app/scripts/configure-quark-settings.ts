@@ -7,10 +7,12 @@
  * floating window is disabled. Unknown settings are preserved.
  */
 
-const dataDir = Deno.args[0];
+import { readFile, writeFile } from "node:fs/promises";
+
+const dataDir = process.argv[2];
 if (!dataDir) {
   console.error("usage: configure-quark-settings.ts <quark-data-dir>");
-  Deno.exit(2);
+  process.exit(2);
 }
 
 const preferencePath = `${dataDir}/preference.json`;
@@ -20,12 +22,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isNotFound(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === "ENOENT";
+}
+
 let preference: Record<string, unknown>;
 try {
-  preference = JSON.parse(await Deno.readTextFile(preferencePath));
+  preference = JSON.parse(await readFile(preferencePath, "utf8"));
   if (!isRecord(preference)) throw new Error("root value is not an object");
 } catch (error) {
-  if (!(error instanceof Deno.errors.NotFound)) {
+  if (!isNotFound(error)) {
     throw new Error(`cannot read or parse ${preferencePath}: ${error}`);
   }
   preference = {};
@@ -47,7 +53,7 @@ const changed = downloadPosition.where !== downloadPath ||
 
 if (!changed) {
   console.log(`Quark settings already normalized: ${preferencePath}`);
-  Deno.exit(0);
+  process.exit(0);
 }
 
 downloadPosition.where = downloadPath;
@@ -57,7 +63,7 @@ globalSetting.downloadPosition = downloadPosition;
 globalSetting.permissionSwitch = permissionSwitch;
 preference["global:setting"] = globalSetting;
 
-await Deno.writeTextFile(
+await writeFile(
   preferencePath,
   `${JSON.stringify(preference, null, "\t")}\n`,
 );

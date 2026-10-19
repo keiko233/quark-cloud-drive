@@ -1,4 +1,4 @@
-// Attaches the Deno KV persistence hooks to the operation queue (task history)
+// Attaches the KV persistence hooks to the operation queue (task history)
 // and the download action (download records).
 
 import { getOperationQueue } from "../browser/context.ts";

@@ -48,7 +48,7 @@ if [ -z "${QUARK_DATA_DIR:-}" ]; then
     echo "QUARK_DATA_DIR is required to configure Quark settings" >&2
     exit 1
 fi
-if ! deno run --quiet --allow-read --allow-write \
+if ! bun run \
     /usr/local/bin/configure-quark-settings.ts "$QUARK_DATA_DIR"; then
     echo "Failed to configure Quark settings" >&2
     exit 1

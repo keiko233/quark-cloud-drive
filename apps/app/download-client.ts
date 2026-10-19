@@ -1,13 +1,13 @@
 import { chromium } from "playwright";
+import { stat } from "node:fs/promises";
 
 const QUARK_PAN_CLIENT_OFFICIAL_SITE_URL = "https://pan.quark.cn/";
 
 async function hasExistingInstaller(installerPath: string) {
   try {
-    const stat = await Deno.stat(installerPath);
-    return stat.isFile;
+    return (await stat(installerPath)).isFile();
   } catch (error) {
-    if (error instanceof Deno.errors.NotFound) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return false;
     }
 
@@ -16,7 +16,7 @@ async function hasExistingInstaller(installerPath: string) {
 }
 
 async function main() {
-  const installerPath = `${Deno.cwd()}/installer.exe`;
+  const installerPath = `${process.cwd()}/installer.exe`;
   const existingInstallerAvailable = await hasExistingInstaller(installerPath);
 
   const browser = await chromium.launch({
@@ -59,12 +59,7 @@ async function main() {
         );
       }
 
-      const installerFile = await Deno.open(installerPath, {
-        create: true,
-        truncate: true,
-        write: true,
-      });
-      await installerResponse.body.pipeTo(installerFile.writable);
+      await Bun.write(installerPath, installerResponse);
 
       console.log(`Installer saved to ${installerPath}`);
     } catch (error) {

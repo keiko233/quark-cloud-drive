@@ -164,12 +164,8 @@ export class Sleeper {
           "taskListProbe",
           { key: "monitor:taskList", priority: 10 },
           async () => {
-            const { getQuarkPage } = await import(
-              "../actions/browser-session.ts"
-            );
-            const { fetchQuarkTaskCountsInBrowser } = await import(
-              "../actions/task-api.ts"
-            );
+            const { fetchQuarkTaskCountsInBrowser, getQuarkPage } =
+              await import("@quark/drive");
             const page = await getQuarkPage();
             const { counts } = await fetchQuarkTaskCountsInBrowser(page);
             return counts.todo + counts.running;

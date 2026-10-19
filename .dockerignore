@@ -10,5 +10,9 @@ wine-data*
 downloads
 .env
 node_modules
+# Nested workspace installs (bun's isolated store lives under the root one, and
+# the per-package dirs are symlinks into it — copying them into the image would
+# carry host-only links).
+**/node_modules
 # Leftovers from prepare-wineprefix.sh (the real artifact is the .tar.zst).
 apps/*/.prepared

@@ -1,10 +1,11 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { chromium } from "playwright";
 
-const enabled = Deno.env.get("QUARK_E2E") === "1";
-const apiUrl = Deno.env.get("QUARK_API_URL") ?? Deno.env.get("CLIENT_URL") ??
+const enabled = process.env.QUARK_E2E === "1";
+const apiUrl = process.env.QUARK_API_URL ?? process.env.CLIENT_URL ??
   "http://127.0.0.1:3000";
-const cdpUrl = Deno.env.get("CDP_URL") ?? "http://127.0.0.1:9223";
+const cdpUrl = process.env.CDP_URL ?? "http://127.0.0.1:9223";
 
 interface FileListItem {
   fid: string;
@@ -50,10 +51,9 @@ async function getJson<T>(path: string): Promise<T> {
   return await response.json() as T;
 }
 
-Deno.test({
-  name: "business endpoints read Quark's API without touching the UI",
-  ignore: !enabled,
-  fn: async () => {
+test.skipIf(!enabled)(
+  "business endpoints read Quark's API without touching the UI",
+  async () => {
     const browser = await chromium.connectOverCDP(cdpUrl);
     try {
       const page = browser.contexts().flatMap((context) => context.pages())
@@ -112,4 +112,4 @@ Deno.test({
       await browser.close();
     }
   },
-});
+);

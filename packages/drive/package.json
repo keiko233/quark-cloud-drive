@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/mod.ts"
   },
+  "scripts": {
+    "test": "QUARK_KV_PATH=/tmp/quark-drive-kv.test.sqlite3 bun test"
+  },
   "dependencies": {
     "@orpc/server": "^1.15.0",
     "@quark/config": "workspace:*",

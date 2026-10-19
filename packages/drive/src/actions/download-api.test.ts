@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkDownloadListUrl,
@@ -10,7 +11,7 @@ import {
 } from "./download-api.ts";
 import { QuarkApiError } from "./renderer-http.ts";
 
-Deno.test("download URLs use the stable API contract", () => {
+test("download URLs use the stable API contract", () => {
   const file = new URL(buildQuarkFileDownloadUrl());
   assertEquals(file.pathname, "/1/clouddrive/file/download");
   assertEquals(file.searchParams.get("pr"), "ucpro");
@@ -86,7 +87,7 @@ function pageFor(responses: Response[]): Page {
   } as unknown as Page;
 }
 
-Deno.test("fetchQuarkFileDownloadsInBrowser parses signed entries", async () => {
+test("fetchQuarkFileDownloadsInBrowser parses signed entries", async () => {
   const page = pageFor([{
     body: {
       code: 0,
@@ -112,7 +113,7 @@ Deno.test("fetchQuarkFileDownloadsInBrowser parses signed entries", async () => 
   assertEquals(await fetchQuarkFileDownloadsInBrowser(page, []), []);
 });
 
-Deno.test("fetchQuarkFileDownloadsInBrowser rejects bad entries", async () => {
+test("fetchQuarkFileDownloadsInBrowser rejects bad entries", async () => {
   await assertRejects(
     () =>
       fetchQuarkFileDownloadsInBrowser(
@@ -123,7 +124,7 @@ Deno.test("fetchQuarkFileDownloadsInBrowser rejects bad entries", async () => {
   );
 });
 
-Deno.test("requestQuarkFolderDownloadInBrowser walks the manifest", async () => {
+test("requestQuarkFolderDownloadInBrowser walks the manifest", async () => {
   const page = pageFor([
     {
       body: {
@@ -153,7 +154,7 @@ Deno.test("requestQuarkFolderDownloadInBrowser walks the manifest", async () => 
   assertEquals(scan.entries[0].dir, false);
 });
 
-Deno.test("requestQuarkFolderDownloadInBrowser surfaces failures", async () => {
+test("requestQuarkFolderDownloadInBrowser surfaces failures", async () => {
   const page = pageFor([
     {
       body: {
@@ -171,7 +172,7 @@ Deno.test("requestQuarkFolderDownloadInBrowser surfaces failures", async () => {
   );
 });
 
-Deno.test("resolveFolderDownloadUrlsInBrowser batches and honours the limit", async () => {
+test("resolveFolderDownloadUrlsInBrowser batches and honours the limit", async () => {
   const batches: number[] = [];
   const page = {
     evaluate: (_callback: unknown, argument?: unknown): Promise<unknown> => {

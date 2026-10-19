@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkFileListUrl,
@@ -86,7 +87,7 @@ function fakePage(payloads: Record<string, Record<string, unknown>>): Page {
   } as unknown as Page;
 }
 
-Deno.test("buildQuarkFileListUrl uses the stable API contract", () => {
+test("buildQuarkFileListUrl uses the stable API contract", () => {
   const url = new URL(buildQuarkFileListUrl("folder-fid", 2, 25));
   assertEquals(url.pathname, "/1/clouddrive/file/sort");
   assertEquals(url.searchParams.get("pr"), "ucpro");
@@ -100,7 +101,7 @@ Deno.test("buildQuarkFileListUrl uses the stable API contract", () => {
   assertEquals(url.searchParams.has("guid"), false);
 });
 
-Deno.test("collectQuarkFileList follows metadata total across pages", async () => {
+test("collectQuarkFileList follows metadata total across pages", async () => {
   const calls: number[] = [];
   const metadata: Record<string, unknown>[] = [];
   const pages: Record<number, QuarkFileListApiPage> = {
@@ -129,7 +130,7 @@ Deno.test("collectQuarkFileList follows metadata total across pages", async () =
   assertEquals(metadata.map((page) => page._page), [1, 2]);
 });
 
-Deno.test("collectQuarkFileList rejects incomplete responses", async () => {
+test("collectQuarkFileList rejects incomplete responses", async () => {
   await assertRejects(
     () =>
       collectQuarkFileList(() =>
@@ -140,7 +141,7 @@ Deno.test("collectQuarkFileList rejects incomplete responses", async () => {
   );
 });
 
-Deno.test("listQuarkFolderInBrowser lists by fid", async () => {
+test("listQuarkFolderInBrowser lists by fid", async () => {
   const page = fakePage({
     "0": apiPayload([
       {
@@ -173,7 +174,7 @@ Deno.test("listQuarkFolderInBrowser lists by fid", async () => {
   assertEquals((root.raw?.pages as unknown[]).length, 1);
 });
 
-Deno.test("formatQuarkFileSize matches Quark display rules", () => {
+test("formatQuarkFileSize matches Quark display rules", () => {
   assertEquals(formatQuarkFileSize(undefined, true), "-");
   assertEquals(formatQuarkFileSize(0, false), "0B");
   assertEquals(formatQuarkFileSize(647, false), "647B");
@@ -183,7 +184,7 @@ Deno.test("formatQuarkFileSize matches Quark display rules", () => {
   assertEquals(formatQuarkFileSize(2.6 * 1024 ** 3, false), "2.6GB");
 });
 
-Deno.test("formatQuarkUpdatedAt uses renderer timezone and seconds", () => {
+test("formatQuarkUpdatedAt uses renderer timezone and seconds", () => {
   assertEquals(
     formatQuarkUpdatedAt(updatedAt, "Asia/Shanghai"),
     "2026/05/26 21:02",
@@ -194,7 +195,7 @@ Deno.test("formatQuarkUpdatedAt uses renderer timezone and seconds", () => {
   );
 });
 
-Deno.test("mapQuarkFileListItem maps folders and files", () => {
+test("mapQuarkFileListItem maps folders and files", () => {
   assertEquals(
     mapQuarkFileListItem(apiItem({ dir: true, size: 0 }), "Asia/Shanghai"),
     {

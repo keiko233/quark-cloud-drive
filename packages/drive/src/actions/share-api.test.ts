@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkShareDetailUrl,
@@ -13,7 +14,7 @@ import {
 } from "./share-api.ts";
 import { QuarkApiError } from "./renderer-http.ts";
 
-Deno.test("parseQuarkShareUrl accepts URLs, ids and passcodes", () => {
+test("parseQuarkShareUrl accepts URLs, ids and passcodes", () => {
   assertEquals(parseQuarkShareUrl("https://pan.quark.cn/s/abcdef"), {
     pwdId: "abcdef",
     passcode: null,
@@ -37,7 +38,7 @@ Deno.test("parseQuarkShareUrl accepts URLs, ids and passcodes", () => {
   );
 });
 
-Deno.test("share URLs use the stable API contract", () => {
+test("share URLs use the stable API contract", () => {
   assertEquals(
     new URL(buildQuarkShareTokenUrl()).pathname,
     "/1/clouddrive/share/sharepage/token",
@@ -85,7 +86,7 @@ function pageFor(
   } as unknown as Page;
 }
 
-Deno.test("fetchQuarkShareDetailInBrowser dedupes entries across pages", async () => {
+test("fetchQuarkShareDetailInBrowser dedupes entries across pages", async () => {
   const full = Array.from({ length: 50 }, (_, i) => ({
     fid: `fid-${i}`,
     file_name: `name-${i}`,
@@ -115,7 +116,7 @@ Deno.test("fetchQuarkShareDetailInBrowser dedupes entries across pages", async (
   assertEquals(detail.pages.length, 2);
 });
 
-Deno.test("fetchQuarkShareDetailInBrowser rejects invalid entries", async () => {
+test("fetchQuarkShareDetailInBrowser rejects invalid entries", async () => {
   await assertRejects(
     () =>
       fetchQuarkShareDetailInBrowser(
@@ -127,7 +128,7 @@ Deno.test("fetchQuarkShareDetailInBrowser rejects invalid entries", async () => 
   );
 });
 
-Deno.test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async () => {
+test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async () => {
   const dir = await fetchQuarkShareSaveDirInBrowser(
     pageFor([{
       body: {
@@ -140,7 +141,7 @@ Deno.test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async
   assertEquals(dir.name, "来自：分享");
 });
 
-Deno.test("pollQuarkTaskInBrowser waits for the finish status", async () => {
+test("pollQuarkTaskInBrowser waits for the finish status", async () => {
   const page = pageFor([
     { body: { code: 0, data: { status: 1 } } },
     { body: { code: 0, data: { status: 2 } } },
@@ -150,7 +151,7 @@ Deno.test("pollQuarkTaskInBrowser waits for the finish status", async () => {
   assertEquals(task.statusName, "finish");
 });
 
-Deno.test("pollQuarkTaskInBrowser reports failures", async () => {
+test("pollQuarkTaskInBrowser reports failures", async () => {
   const page = pageFor([{ body: { code: 0, data: { status: 3 } } }]);
   const task = await pollQuarkTaskInBrowser(page, "task-1");
   assertEquals(task.statusName, "fail");

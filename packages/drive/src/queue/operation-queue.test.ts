@@ -1,11 +1,12 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { OperationQueue } from "./operation-queue.ts";
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-Deno.test("queue runs operations serially (concurrency 1)", async () => {
+test("queue runs operations serially (concurrency 1)", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const order: string[] = [];
   const p1 = q.run("a", {}, async () => {
@@ -23,7 +24,7 @@ Deno.test("queue runs operations serially (concurrency 1)", async () => {
   assertEquals(order, ["a-start", "a-end", "b-start"]);
 });
 
-Deno.test("queue reports status with running/queued/total", async () => {
+test("queue reports status with running/queued/total", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const p1 = q.run("a", {}, async () => {
     await sleep(30);
@@ -40,7 +41,7 @@ Deno.test("queue reports status with running/queued/total", async () => {
   assertEquals(q.status().queued, 0);
 });
 
-Deno.test("queue runs higher-priority task first", async () => {
+test("queue runs higher-priority task first", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const order: string[] = [];
   const blocker = q.run("blocker", {}, async () => {
@@ -60,7 +61,7 @@ Deno.test("queue runs higher-priority task first", async () => {
   assertEquals(order, ["blocker", "high", "low"]);
 });
 
-Deno.test("queue coalesces identical keys onto one in-flight operation", async () => {
+test("queue coalesces identical keys onto one in-flight operation", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   let executions = 0;
   const p1 = q.run("a", { key: "same" }, async () => {
@@ -74,7 +75,7 @@ Deno.test("queue coalesces identical keys onto one in-flight operation", async (
   assertEquals(executions, 1);
 });
 
-Deno.test("queue coalesce=skip rejects duplicates", async () => {
+test("queue coalesce=skip rejects duplicates", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const p1 = q.run("a", { key: "k" }, async () => {
     await sleep(30);
@@ -89,7 +90,7 @@ Deno.test("queue coalesce=skip rejects duplicates", async () => {
   await p1;
 });
 
-Deno.test("queue times out a hung operation", async () => {
+test("queue times out a hung operation", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   await assertRejects(
     () =>
@@ -106,7 +107,7 @@ Deno.test("queue times out a hung operation", async () => {
   );
 });
 
-Deno.test("queue cancel() rejects a waiting task", async () => {
+test("queue cancel() rejects a waiting task", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const blocker = q.run("blocker", {}, async () => {
     await sleep(30);
@@ -119,7 +120,7 @@ Deno.test("queue cancel() rejects a waiting task", async () => {
   await blocker;
 });
 
-Deno.test("queue backpressure rejects beyond maxWaiting", async () => {
+test("queue backpressure rejects beyond maxWaiting", async () => {
   const q = new OperationQueue({ maxWaiting: 2 });
   const blocker = q.run("blocker", {}, async () => {
     await sleep(50);
@@ -135,7 +136,7 @@ Deno.test("queue backpressure rejects beyond maxWaiting", async () => {
   await blocker;
 });
 
-Deno.test("queue publishes change and operation events", async () => {
+test("queue publishes change and operation events", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const phases: string[] = [];
   const unsubOps = q.events.subscribe("operation", (e) => phases.push(e.phase));
@@ -144,7 +145,7 @@ Deno.test("queue publishes change and operation events", async () => {
   unsubOps();
 });
 
-Deno.test("runStreaming forwards yields and returns the final value", async () => {
+test("runStreaming forwards yields and returns the final value", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const stream = await q.runStreaming(
     "gen",
@@ -162,7 +163,7 @@ Deno.test("runStreaming forwards yields and returns the final value", async () =
   assertEquals(collected, [1, 2]);
 });
 
-Deno.test("runStreaming propagates generator failures to the consumer", async () => {
+test("runStreaming propagates generator failures to the consumer", async () => {
   const q = new OperationQueue({ maxWaiting: 100 });
   const stream = await q.runStreaming(
     "gen-error",

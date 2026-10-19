@@ -1,11 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import {
   localDownloadStatusName,
   mapLocalDownloadTask,
   QUARK_PARTIAL_DOWNLOAD_SUFFIX,
 } from "./download-disk-api.ts";
 
-Deno.test("localDownloadStatusName decodes every app status code", () => {
+test("localDownloadStatusName decodes every app status code", () => {
   assertEquals(localDownloadStatusName(-1), "error");
   assertEquals(localDownloadStatusName(0), "new");
   assertEquals(localDownloadStatusName(1), "init");
@@ -17,11 +18,11 @@ Deno.test("localDownloadStatusName decodes every app status code", () => {
   assertEquals(localDownloadStatusName(42), "unknown");
 });
 
-Deno.test("the in-flight suffix matches what the app writes", () => {
+test("the in-flight suffix matches what the app writes", () => {
   assertEquals(QUARK_PARTIAL_DOWNLOAD_SUFFIX, ".qkdownloading");
 });
 
-Deno.test("mapLocalDownloadTask projects a raw app task", () => {
+test("mapLocalDownloadTask projects a raw app task", () => {
   const task = mapLocalDownloadTask({
     id: "local-1",
     name: "a.mp4",
@@ -49,7 +50,7 @@ Deno.test("mapLocalDownloadTask projects a raw app task", () => {
   assertEquals(task.error, null);
 });
 
-Deno.test("mapLocalDownloadTask clamps and survives missing fields", () => {
+test("mapLocalDownloadTask clamps and survives missing fields", () => {
   const empty = mapLocalDownloadTask({});
   assertEquals(empty.taskId, "");
   assertEquals(empty.name, "");

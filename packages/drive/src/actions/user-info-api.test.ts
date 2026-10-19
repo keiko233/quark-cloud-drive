@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkUserInfoUrl,
@@ -20,7 +21,7 @@ function fakePage(response: { status: number; body: unknown }): Page {
   } as unknown as Page;
 }
 
-Deno.test("buildQuarkUserInfoUrl uses the stable API contract", () => {
+test("buildQuarkUserInfoUrl uses the stable API contract", () => {
   const url = new URL(buildQuarkUserInfoUrl());
   assertEquals(url.pathname, "/1/clouddrive/member");
   assertEquals(url.searchParams.get("pr"), "ucpro");
@@ -31,7 +32,7 @@ Deno.test("buildQuarkUserInfoUrl uses the stable API contract", () => {
   assertEquals(url.searchParams.has("guid"), false);
 });
 
-Deno.test("formatQuarkCapacityValue matches Quark's compact units", () => {
+test("formatQuarkCapacityValue matches Quark's compact units", () => {
   assertEquals(formatQuarkCapacityValue(0), "0B");
   assertEquals(formatQuarkCapacityValue(647), "647B");
   assertEquals(formatQuarkCapacityValue(1024), "1K");
@@ -40,14 +41,14 @@ Deno.test("formatQuarkCapacityValue matches Quark's compact units", () => {
   assertEquals(formatQuarkCapacityValue(6 * 1024 ** 4), "6T");
 });
 
-Deno.test("formatQuarkCapacity joins used and total", () => {
+test("formatQuarkCapacity joins used and total", () => {
   assertEquals(
     formatQuarkCapacity(4741909538222, 6597069766656),
     "4.3T/6T",
   );
 });
 
-Deno.test("parseQuarkMemberData reads capacity fields", () => {
+test("parseQuarkMemberData reads capacity fields", () => {
   assertEquals(
     parseQuarkMemberData(
       {
@@ -71,7 +72,7 @@ Deno.test("parseQuarkMemberData reads capacity fields", () => {
   );
 });
 
-Deno.test("parseQuarkMemberData rejects missing capacity", () => {
+test("parseQuarkMemberData rejects missing capacity", () => {
   assertThrows(
     () => parseQuarkMemberData({}),
     QuarkApiError,
@@ -79,7 +80,7 @@ Deno.test("parseQuarkMemberData rejects missing capacity", () => {
   );
 });
 
-Deno.test("fetchQuarkMemberInBrowser reads a logged-in member payload", async () => {
+test("fetchQuarkMemberInBrowser reads a logged-in member payload", async () => {
   const page = fakePage({
     status: 200,
     body: {
@@ -91,7 +92,7 @@ Deno.test("fetchQuarkMemberInBrowser reads a logged-in member payload", async ()
   assertEquals(member.capacity, "1K/2K");
 });
 
-Deno.test("probeQuarkLoginInBrowser treats 401/31001 as logged out", async () => {
+test("probeQuarkLoginInBrowser treats 401/31001 as logged out", async () => {
   const loggedOut = fakePage({
     status: 401,
     body: { code: 31001, message: "require login [guest]" },

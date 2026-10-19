@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkTaskCountUrl,
@@ -16,7 +17,7 @@ import {
 } from "./task-api.ts";
 import { QuarkApiError } from "./renderer-http.ts";
 
-Deno.test("buildQuarkTaskListUrl uses the stable API contract", () => {
+test("buildQuarkTaskListUrl uses the stable API contract", () => {
   const url = new URL(buildQuarkTaskListUrl());
   assertEquals(url.pathname, "/1/clouddrive/task/current/list");
   assertEquals(url.searchParams.get("pr"), "ucpro");
@@ -27,7 +28,7 @@ Deno.test("buildQuarkTaskListUrl uses the stable API contract", () => {
   assertEquals(url.searchParams.has("task_type"), false);
 });
 
-Deno.test("buildQuarkTaskListUrl maps status, type and cursor", () => {
+test("buildQuarkTaskListUrl maps status, type and cursor", () => {
   const url = new URL(buildQuarkTaskListUrl({
     status: "running",
     type: "offline_download,cloud_save",
@@ -41,7 +42,7 @@ Deno.test("buildQuarkTaskListUrl maps status, type and cursor", () => {
   assertEquals(url.searchParams.get("filter_end_time"), "1780000000000");
 });
 
-Deno.test("task size is clamped and 'all' drops the status filter", () => {
+test("task size is clamped and 'all' drops the status filter", () => {
   assertEquals(
     new URL(buildQuarkTaskListUrl({ status: "all", size: 5_000 })).searchParams
       .get("status"),
@@ -57,13 +58,13 @@ Deno.test("task size is clamped and 'all' drops the status filter", () => {
   );
 });
 
-Deno.test("toTaskTypeCsv accepts names and codes", () => {
+test("toTaskTypeCsv accepts names and codes", () => {
   assertEquals(toTaskTypeCsv("unzip"), "4");
   assertEquals(toTaskTypeCsv("4, 6"), "4,6");
   assertThrows(() => toTaskTypeCsv("nope"), QuarkApiError);
 });
 
-Deno.test("cursor encode/decode round-trips and rejects bad input", () => {
+test("cursor encode/decode round-trips and rejects bad input", () => {
   const cursor = encodeTaskCursor("abc", 123);
   assertEquals(decodeTaskCursor(cursor), { endTaskId: "abc", endTime: "123" });
   assertEquals(decodeTaskCursor("no-separator"), null);
@@ -75,7 +76,7 @@ Deno.test("cursor encode/decode round-trips and rejects bad input", () => {
   );
 });
 
-Deno.test("buildQuarkTaskCountUrl covers every status and type", () => {
+test("buildQuarkTaskCountUrl covers every status and type", () => {
   const url = new URL(buildQuarkTaskCountUrl());
   assertEquals(url.pathname, "/1/clouddrive/task/count");
   assertEquals(url.searchParams.get("status"), "0,1,2,3,4");
@@ -89,7 +90,7 @@ Deno.test("buildQuarkTaskCountUrl covers every status and type", () => {
   );
 });
 
-Deno.test("parseQuarkTaskCounts tolerates sparse maps", () => {
+test("parseQuarkTaskCounts tolerates sparse maps", () => {
   assertEquals(parseQuarkTaskCounts({ count: { "2": 82 } }), {
     todo: 0,
     running: 0,
@@ -102,12 +103,12 @@ Deno.test("parseQuarkTaskCounts tolerates sparse maps", () => {
   assertEquals(parseQuarkTaskCounts(null).total, 0);
 });
 
-Deno.test("taskStatusName rejects unknown codes", () => {
+test("taskStatusName rejects unknown codes", () => {
   assertEquals(taskStatusName(2), "finish");
   assertThrows(() => taskStatusName(99), QuarkApiError);
 });
 
-Deno.test("mapQuarkTask decodes per-mille progress", () => {
+test("mapQuarkTask decodes per-mille progress", () => {
   const task = mapQuarkTask({
     task_id: "task-1",
     task_type: 5,
@@ -130,7 +131,7 @@ Deno.test("mapQuarkTask decodes per-mille progress", () => {
   assertEquals(task.updatedAt, 1_780_000_001_000);
 });
 
-Deno.test("readTaskCursor needs both metadata fields", () => {
+test("readTaskCursor needs both metadata fields", () => {
   assertEquals(
     readTaskCursor({ filter_end_task_id: "a", filter_end_time: 7 }),
     "7:a",
@@ -155,7 +156,7 @@ function pageFor(
   } as unknown as Page;
 }
 
-Deno.test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async () => {
+test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async () => {
   const page = pageFor([{
     body: {
       code: 0,
@@ -202,7 +203,7 @@ Deno.test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async (
   assertEquals(shortPage.cursor, null);
 });
 
-Deno.test("fetchQuarkTaskPageInBrowser rejects invalid data", async () => {
+test("fetchQuarkTaskPageInBrowser rejects invalid data", async () => {
   await assertRejects(
     () =>
       fetchQuarkTaskPageInBrowser(pageFor([{ body: { code: 0, data: {} } }])),
@@ -210,7 +211,7 @@ Deno.test("fetchQuarkTaskPageInBrowser rejects invalid data", async () => {
   );
 });
 
-Deno.test("fetchQuarkTaskCountsInBrowser and updateQuarkTasksInBrowser", async () => {
+test("fetchQuarkTaskCountsInBrowser and updateQuarkTasksInBrowser", async () => {
   const countsPage = pageFor([{
     body: { code: 0, data: { count: { "1": 3, "2": 1 } } },
   }]);

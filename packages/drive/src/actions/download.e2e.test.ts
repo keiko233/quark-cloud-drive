@@ -1,17 +1,19 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
+import { stat, unlink } from "node:fs/promises";
 
 // Opt-in end-to-end check for the local downloader. It hands one real (small)
 // file to the Quark app, waits for the transfer to finish, verifies the file
 // landed on the host, then cancels the task and deletes its artifact.
 //
-// Run with: `QUARK_E2E=1 deno task test:e2e`. The app's Downloads
+// Run with: `QUARK_E2E=1 bun run test:e2e`. The app's Downloads
 // directory is the `downloads/` bind mount, so the host path is derived from
 // `QUARK_DOWNLOADS_HOST_DIR` (default `downloads`).
 
-const enabled = Deno.env.get("QUARK_E2E") === "1";
-const apiUrl = Deno.env.get("QUARK_API_URL") ?? Deno.env.get("CLIENT_URL") ??
+const enabled = process.env.QUARK_E2E === "1";
+const apiUrl = process.env.QUARK_API_URL ?? process.env.CLIENT_URL ??
   "http://127.0.0.1:3000";
-const hostDownloads = Deno.env.get("QUARK_DOWNLOADS_HOST_DIR") ?? "downloads";
+const hostDownloads = process.env.QUARK_DOWNLOADS_HOST_DIR ?? "downloads";
 
 interface FileListItem {
   fid: string;
@@ -92,10 +94,9 @@ async function findSmallestFile(): Promise<FileListItem | null> {
   return best;
 }
 
-Deno.test({
-  name: "download-file writes through the app's own downloader",
-  ignore: !enabled,
-  fn: async () => {
+test.skipIf(!enabled)(
+  "download-file writes through the app's own downloader",
+  async () => {
     const target = await findSmallestFile();
     assert(target, "no file available to download");
 
@@ -125,13 +126,13 @@ Deno.test({
     const hostPath = `${hostDownloads}/${started.name}`;
     let written: number | null = null;
     try {
-      written = (await Deno.stat(hostPath)).size;
+      written = (await stat(hostPath)).size;
     } catch {
       written = null;
     }
     if (written !== null) {
       assertEquals(written, target.sizeBytes);
-      await Deno.remove(hostPath);
+      await unlink(hostPath);
     }
 
     const cancelled = await postJson<ControlResult>("/download-task", {
@@ -148,4 +149,4 @@ Deno.test({
       false,
     );
   },
-});
+);

@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { KvStore } from "./kv.ts";
 
 async function freshStore(): Promise<KvStore> {
@@ -7,7 +8,7 @@ async function freshStore(): Promise<KvStore> {
   return store;
 }
 
-Deno.test("KvStore: record and list tasks (newest first)", async () => {
+test("KvStore: record and list tasks (newest first)", async () => {
   const store = await freshStore();
   const t1 = Date.now();
   await store.recordTask({
@@ -36,7 +37,7 @@ Deno.test("KvStore: record and list tasks (newest first)", async () => {
   store.close();
 });
 
-Deno.test("KvStore: settings round-trip", async () => {
+test("KvStore: settings round-trip", async () => {
   const store = await freshStore();
   assertEquals(await store.getSetting("never"), null);
   await store.setSetting("idle.minutes", 5);

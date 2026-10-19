@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@jsr/std__assert";
+import { test } from "bun:test";
 import type { Page } from "playwright";
 import {
   buildQuarkFileInfoUrl,
@@ -54,7 +55,7 @@ function fakePage(payloads: Record<string, JsonObject>): Page {
   } as unknown as Page;
 }
 
-Deno.test("buildQuarkFileInfoUrl uses the stable API contract", () => {
+test("buildQuarkFileInfoUrl uses the stable API contract", () => {
   const url = new URL(buildQuarkFileInfoUrl("folder-fid"));
   assertEquals(url.pathname, "/1/clouddrive/file/info");
   assertEquals(url.searchParams.get("pr"), "ucpro");
@@ -63,11 +64,11 @@ Deno.test("buildQuarkFileInfoUrl uses the stable API contract", () => {
   assertEquals(url.searchParams.get("need_profile_tags"), "1");
 });
 
-Deno.test("ROOT_FID is the drive root", () => {
+test("ROOT_FID is the drive root", () => {
   assertEquals(ROOT_FID, "0");
 });
 
-Deno.test("parseQuarkFileInfoData normalizes the raw entry", () => {
+test("parseQuarkFileInfoData normalizes the raw entry", () => {
   const entry = parseQuarkFileInfoData(
     infoPayload("movie-fid", "movie.mp4", "folder-fid", false).data,
   );
@@ -79,7 +80,7 @@ Deno.test("parseQuarkFileInfoData normalizes the raw entry", () => {
   assertEquals(entry.raw.file_name, "movie.mp4");
 });
 
-Deno.test("parseQuarkFileInfoData rejects incomplete entries", () => {
+test("parseQuarkFileInfoData rejects incomplete entries", () => {
   try {
     parseQuarkFileInfoData({ fid: "x" });
     throw new Error("expected parse to fail");
@@ -88,7 +89,7 @@ Deno.test("parseQuarkFileInfoData rejects incomplete entries", () => {
   }
 });
 
-Deno.test("fetchQuarkFileInfoInBrowser reads one fid", async () => {
+test("fetchQuarkFileInfoInBrowser reads one fid", async () => {
   const page = fakePage({
     "movie-fid": infoPayload("movie-fid", "movie.mp4", "folder-fid", false),
   });
@@ -100,7 +101,7 @@ Deno.test("fetchQuarkFileInfoInBrowser reads one fid", async () => {
   );
 });
 
-Deno.test("mapQuarkFileInfo projects the contract shape", () => {
+test("mapQuarkFileInfo projects the contract shape", () => {
   const entry = parseQuarkFileInfoData(
     infoPayload("movie-fid", "movie.mp4", "folder-fid", false).data,
   );

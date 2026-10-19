@@ -1,8 +1,9 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { RuntimeConfigSchema } from "@quark/contract/schemas";
 import { DEFAULT_RUNTIME_CONFIG, withCurrentGuardDefaults } from "./config.ts";
 
-Deno.test("withCurrentGuardDefaults adds new guards to a stale config", () => {
+test("withCurrentGuardDefaults adds new guards to a stale config", () => {
   const stale = RuntimeConfigSchema.parse({
     ...DEFAULT_RUNTIME_CONFIG,
     requireLoginFor: ["listFile", "downloadFile"],
@@ -17,7 +18,7 @@ Deno.test("withCurrentGuardDefaults adds new guards to a stale config", () => {
   }
 });
 
-Deno.test("withCurrentGuardDefaults leaves a complete config alone", () => {
+test("withCurrentGuardDefaults leaves a complete config alone", () => {
   const complete = RuntimeConfigSchema.parse({
     ...DEFAULT_RUNTIME_CONFIG,
     requireLoginFor: [...DEFAULT_RUNTIME_CONFIG.requireLoginFor].reverse(),

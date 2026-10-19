@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { isProcedure } from "@orpc/server";
 import { clientRouter } from "./router.ts";
 import { snake } from "./mcp.ts";
@@ -11,7 +12,7 @@ function snakeImpl(s: string): string {
 }
 
 // The snake() used by the MCP bridge must produce the documented tool names.
-Deno.test("MCP tool names: snake_case conversion", () => {
+test("MCP tool names: snake_case conversion", () => {
   assertEquals(snakeImpl("queueStatus"), "queue_status");
   assertEquals(snakeImpl("loginQRCode"), "login_qr_code");
   assertEquals(snakeImpl("listFile"), "list_file");
@@ -25,7 +26,7 @@ Deno.test("MCP tool names: snake_case conversion", () => {
 });
 
 // The router must expose exactly the procedures the MCP bridge walks.
-Deno.test("MCP: every business procedure opts in via contract meta", () => {
+test("MCP: every business procedure opts in via contract meta", () => {
   const optedIn: string[] = [];
   const notOpted: string[] = [];
   for (const [key, value] of Object.entries(clientRouter)) {
@@ -65,7 +66,7 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
 });
 
 // The nested manager sub-router must surface as `manager_*` MCP tools.
-Deno.test("MCP: manager sub-router exposes manager_* tools", () => {
+test("MCP: manager sub-router exposes manager_* tools", () => {
   const manager = (clientRouter as Record<string, unknown>).manager as Record<
     string,
     unknown
@@ -92,7 +93,7 @@ Deno.test("MCP: manager sub-router exposes manager_* tools", () => {
 });
 
 // The snake() export must match the standalone implementation (guards drift).
-Deno.test("MCP: snake export matches helper", () => {
+test("MCP: snake export matches helper", () => {
   for (
     const input of [
       "queueStatus",

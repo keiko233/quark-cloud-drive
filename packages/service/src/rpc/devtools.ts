@@ -16,6 +16,7 @@ import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { CDP_URL } from "@quark/config";
 import { log } from "@quark/config";
+import type { DevtoolsData } from "./ws.ts";
 
 const HTTP_PREFIX = "/devtools/http";
 const WS_PREFIX = "/devtools/ws";
@@ -231,84 +232,28 @@ devtoolsApp.get(
   (c) => c.html(INSPECTOR_SHELL),
 );
 
-// WebSocket bridge: browser <-> CDP proxy. Mirrors the /vnc/ws pattern but
-// both sides are WebSockets, so this is a WS->WS relay instead of WS->TCP.
-devtoolsApp.get(`${WS_PREFIX}/*`, (c) => {
-  const path = c.req.path.slice(WS_PREFIX.length) || "/";
+/**
+ * WebSocket bridge: browser <-> CDP proxy. Mirrors the /vnc/ws pattern but
+ * both sides are WebSockets, so this is a WS->WS relay instead of WS->TCP.
+ *
+ * Resolved before Hono, for the same reason as the noVNC bridge: Bun upgrades
+ * at the server level and needs `undefined` back from the fetch handler.
+ */
+export function devtoolsWsData(req: Request): DevtoolsData | null {
+  const { pathname } = new URL(req.url);
+  if (pathname !== WS_PREFIX && !pathname.startsWith(`${WS_PREFIX}/`)) {
+    return null;
+  }
+  const path = pathname.slice(WS_PREFIX.length) || "/";
   const { hostname, port } = resolveCdpTarget();
-  const upgrade = Deno.upgradeWebSocket(c.req.raw);
-  const client = upgrade.socket;
-
-  let upstream: WebSocket | null = null;
-  const pending: Array<string | ArrayBuffer> = [];
-  let closed = false;
-
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    try {
-      client.close();
-    } catch {
-      // already closed
-    }
-    try {
-      upstream?.close();
-    } catch {
-      // already closed
-    }
+  return {
+    kind: "devtools",
+    url: `ws://${hostname}:${port}${path}`,
+    upstream: null,
+    pending: [],
+    closed: false,
   };
-
-  client.onopen = () => {
-    try {
-      upstream = new WebSocket(`ws://${hostname}:${port}${path}`);
-    } catch (error) {
-      log.error(`devtools upstream ws connect failed: ${error}`);
-      close();
-      return;
-    }
-    upstream.binaryType = "arraybuffer";
-    upstream.onopen = () => {
-      for (const frame of pending) {
-        try {
-          upstream!.send(frame);
-        } catch {
-          // connection torn down while flushing
-        }
-      }
-      pending.length = 0;
-    };
-    upstream.onmessage = (event) => {
-      if (closed) return;
-      const data = event.data as string | ArrayBuffer;
-      try {
-        client.send(data);
-      } catch {
-        close();
-      }
-    };
-    upstream.onclose = close;
-    upstream.onerror = close;
-  };
-
-  client.onmessage = (event) => {
-    if (closed) return;
-    const data = event.data as string | ArrayBuffer;
-    if (upstream && upstream.readyState === WebSocket.OPEN) {
-      try {
-        upstream.send(data);
-      } catch {
-        close();
-      }
-    } else {
-      pending.push(data);
-    }
-  };
-
-  client.onclose = close;
-  client.onerror = close;
-
-  return upgrade.response;
-});
+}
 
 // Proxy the embedded browser's DevTools frontend assets so the shell and the
 // frontend load from the client origin (same as /vnc/* serving noVNC assets).

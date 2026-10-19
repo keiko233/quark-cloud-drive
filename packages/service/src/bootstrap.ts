@@ -53,10 +53,10 @@ export async function bootstrap(
     const processManager = new ProcessManager();
     startCdpProxy({ onActivity: () => processManager.markActivity() });
     setManager(createEmbeddedManager(processManager));
-    Deno.serve(
-      { port: QUARK_API_PORT },
-      createManagerApp(processManager).fetch,
-    );
+    Bun.serve({
+      port: QUARK_API_PORT,
+      fetch: createManagerApp(processManager).fetch,
+    });
     log.info(`manager: embedded (api :${QUARK_API_PORT})`);
     autostart(processManager);
   }

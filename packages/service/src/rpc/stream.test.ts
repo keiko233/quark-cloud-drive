@@ -1,7 +1,8 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { consumeAsyncIterableFinal, isAsyncIterable } from "./stream.ts";
 
-Deno.test("consumeAsyncIterableFinal returns the generator's terminal value", async () => {
+test("consumeAsyncIterableFinal returns the generator's terminal value", async () => {
   const gen = (async function* () {
     yield { type: "status", message: "click 首页" };
     yield { type: "collecting", seen: 3, total: 0 };
@@ -13,7 +14,7 @@ Deno.test("consumeAsyncIterableFinal returns the generator's terminal value", as
   });
 });
 
-Deno.test("isAsyncIterable distinguishes generators from plain values", () => {
+test("isAsyncIterable distinguishes generators from plain values", () => {
   assertEquals(isAsyncIterable(null), false);
   assertEquals(isAsyncIterable({}), false);
   assertEquals(isAsyncIterable([]), false);

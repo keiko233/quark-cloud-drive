@@ -1,4 +1,5 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { kvStore } from "@quark/drive";
 import {
   clearLoggedOutStopMarker,
@@ -8,7 +9,7 @@ import {
 } from "./status.ts";
 import { autoWakeBlockReason, isAutoWakeBlocked } from "./wake.ts";
 
-Deno.test("an explicit stop suppresses auto-wake until it is cleared", async () => {
+test("an explicit stop suppresses auto-wake until it is cleared", async () => {
   await kvStore.open();
   await clearManualStop();
   await clearLoggedOutStopMarker();

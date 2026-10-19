@@ -8,8 +8,10 @@
 // Page entry: /vnc/vnc_lite.html?path=vnc/ws  (same origin as the WS proxy).
 
 import { Hono } from "hono";
+import { readFile } from "node:fs/promises";
 import { NOVNC_STATIC_DIR, VNC_URL } from "@quark/config";
 import { log } from "@quark/config";
+import type { VncData } from "./ws.ts";
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -40,73 +42,18 @@ export const vncApp = new Hono();
 // Entry page redirect: /vnc -> the lite client wired to our WS proxy.
 vncApp.get("/vnc", (c) => c.redirect("/vnc/vnc_lite.html?path=vnc/ws"));
 
-// WebSocket → TCP bridge for noVNC (raw RFB over binary WS frames).
-// Registered before the static /vnc/* catch-all so it takes precedence.
-vncApp.get("/vnc/ws", (c) => {
+/**
+ * WebSocket → TCP bridge for noVNC (raw RFB over binary WS frames).
+ *
+ * Resolved before Hono: a successful Bun upgrade must leave the fetch handler
+ * returning `undefined`, and it also keeps /vnc/ws ahead of the /vnc/* static
+ * catch-all without relying on route order.
+ */
+export function vncWsData(req: Request): VncData | null {
+  if (new URL(req.url).pathname !== "/vnc/ws") return null;
   const { hostname, port } = resolveVncTarget();
-  const upgrade = Deno.upgradeWebSocket(c.req.raw);
-  const ws = upgrade.socket;
-
-  let tcp: Deno.TcpConn | null = null;
-  let closed = false;
-
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    try {
-      tcp?.close();
-    } catch {
-      // already closed
-    }
-    try {
-      ws.close();
-    } catch {
-      // already closed
-    }
-  };
-
-  ws.onopen = () => {
-    Deno.connect({ hostname, port })
-      .then((conn) => {
-        if (closed) {
-          conn.close();
-          return;
-        }
-        tcp = conn;
-        (async () => {
-          try {
-            for await (const chunk of conn.readable) {
-              if (closed) break;
-              ws.send(chunk);
-            }
-          } catch {
-            // VNC closed
-          }
-          close();
-        })();
-      })
-      .catch((error) => {
-        log.error(`vnc proxy connect failed: ${error}`);
-        close();
-      });
-  };
-
-  ws.onmessage = (event) => {
-    const data = event.data;
-    if (typeof data === "string") {
-      tcp?.write(new TextEncoder().encode(data));
-    } else if (data instanceof ArrayBuffer) {
-      tcp?.write(new Uint8Array(data));
-    } else if (ArrayBuffer.isView(data)) {
-      tcp?.write(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
-    }
-  };
-
-  ws.onclose = close;
-  ws.onerror = close;
-
-  return upgrade.response;
-});
+  return { kind: "vnc", hostname, port, tcp: null, closed: false };
+}
 
 // Static noVNC assets (/usr/share/novnc in the container image).
 vncApp.get("/vnc/*", async (c) => {
@@ -114,7 +61,7 @@ vncApp.get("/vnc/*", async (c) => {
   const normalized = rel.replace(/\.\./g, "").replace(/^\/+/, "");
   const filePath = `${NOVNC_STATIC_DIR}/${normalized}`;
   try {
-    const data = await Deno.readFile(filePath);
+    const data = new Uint8Array(await readFile(filePath));
     const ext = filePath.slice(filePath.lastIndexOf(".")).toLowerCase();
     return c.body(data, 200, {
       "Content-Type": MIME[ext] ?? "application/octet-stream",

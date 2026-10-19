@@ -11,6 +11,7 @@ import { clientRouter } from "./router.ts";
 import { handleMcpRequest } from "./mcp.ts";
 import { vncApp } from "./vnc.ts";
 import { devtoolsApp } from "./devtools.ts";
+import { resolveUpgrade, websocket } from "./ws.ts";
 import { kvStore } from "@quark/drive";
 
 const handler = new OpenAPIHandler(clientRouter, {
@@ -76,7 +77,21 @@ app.use("/*", async (c, next) => {
 });
 
 export function startService(): void {
-  Deno.serve({ port: SERVER_PORT }, app.fetch);
+  Bun.serve({
+    port: SERVER_PORT,
+    // The two WebSocket bridges upgrade before Hono: Bun needs `undefined`
+    // back from the fetch handler for a successful upgrade, which a Hono
+    // handler cannot express.
+    fetch(req, server) {
+      const data = resolveUpgrade(req);
+      if (data) {
+        if (server.upgrade(req, { data })) return undefined;
+        return new Response("websocket upgrade failed", { status: 400 });
+      }
+      return app.fetch(req);
+    },
+    websocket,
+  });
   log.debug(`oRPC/Hono server listening on port ${SERVER_PORT}`);
   log.debug(`API docs: http://localhost:${SERVER_PORT}/`);
   log.debug(`OpenAPI spec: http://localhost:${SERVER_PORT}/spec.json`);

@@ -1,4 +1,5 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects } from "@jsr/std__assert";
+import { test } from "bun:test";
 import {
   ByteBuffer,
   frameClient,
@@ -20,7 +21,7 @@ function utf8(s: string): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-Deno.test("frameServer round-trips through readFrame", async () => {
+test("frameServer round-trips through readFrame", async () => {
   const payload = utf8("hello world");
   const frame = frameServer(payload, 1);
   const buf = bufferFrom(frame);
@@ -29,7 +30,7 @@ Deno.test("frameServer round-trips through readFrame", async () => {
   assertEquals(new TextDecoder().decode(got?.payload), "hello world");
 });
 
-Deno.test("frameClient round-trips through readFrame (unmasking)", async () => {
+test("frameClient round-trips through readFrame (unmasking)", async () => {
   const payload = utf8('{"id":1,"method":"Runtime.evaluate"}');
   const frame = frameClient(payload, 1);
   const buf = bufferFrom(frame);
@@ -41,7 +42,7 @@ Deno.test("frameClient round-trips through readFrame (unmasking)", async () => {
   );
 });
 
-Deno.test("frameServer handles extended 16-bit length", async () => {
+test("frameServer handles extended 16-bit length", async () => {
   // 126-byte payload forces the 16-bit extended length path.
   const payload = new Uint8Array(126).fill(0x41);
   const frame = frameServer(payload, 1);
@@ -52,7 +53,7 @@ Deno.test("frameServer handles extended 16-bit length", async () => {
   assertEquals(got.payload[0], 0x41);
 });
 
-Deno.test("frameServer handles 64-bit length path", async () => {
+test("frameServer handles 64-bit length path", async () => {
   const payload = new Uint8Array(70000).fill(0x42);
   const frame = frameServer(payload, 2);
   const buf = bufferFrom(frame);
@@ -63,7 +64,7 @@ Deno.test("frameServer handles 64-bit length path", async () => {
   assertEquals(got.payload[69999], 0x42);
 });
 
-Deno.test("frameClient has no trailing bytes (exact header+mask+payload)", async () => {
+test("frameClient has no trailing bytes (exact header+mask+payload)", async () => {
   // Regression: headerLength(..., true) already includes the mask, so the
   // frame must NOT add another +4. Extra trailing zero bytes get parsed as a
   // garbage second frame by the peer (Chromium closes the CDP WS with 1006).
@@ -85,7 +86,7 @@ Deno.test("frameClient has no trailing bytes (exact header+mask+payload)", async
   assertEquals(await readFrame(buf), null);
 });
 
-Deno.test("frameServer has no trailing bytes", async () => {
+test("frameServer has no trailing bytes", async () => {
   const payload = utf8("ok");
   const frame = frameServer(payload, 1);
   assertEquals(frame.length, 2 + payload.length);
@@ -95,7 +96,7 @@ Deno.test("frameServer has no trailing bytes", async () => {
   assertEquals(await readFrame(buf), null);
 });
 
-Deno.test("close frame opcode 8 passes through", async () => {
+test("close frame opcode 8 passes through", async () => {
   const payload = new Uint8Array([0x03, 0xe8]); // close code 1000
   const frame = frameServer(payload, 8);
   const buf = bufferFrom(frame);
@@ -104,7 +105,7 @@ Deno.test("close frame opcode 8 passes through", async () => {
   assertEquals(got?.payload.length, 2);
 });
 
-Deno.test("multiple frames in a single chunk are read sequentially", async () => {
+test("multiple frames in a single chunk are read sequentially", async () => {
   const a = frameServer(utf8("alpha"), 1);
   const b = frameServer(utf8("beta"), 1);
   const combined = new Uint8Array(a.length + b.length);
@@ -117,7 +118,7 @@ Deno.test("multiple frames in a single chunk are read sequentially", async () =>
   assertEquals(new TextDecoder().decode(second?.payload), "beta");
 });
 
-Deno.test("readFrame returns null at clean EOF", async () => {
+test("readFrame returns null at clean EOF", async () => {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.close();
@@ -128,7 +129,7 @@ Deno.test("readFrame returns null at clean EOF", async () => {
   assertEquals(got, null);
 });
 
-Deno.test("readFrame throws on truncated frame", async () => {
+test("readFrame throws on truncated frame", async () => {
   // A 2-byte header declaring a 10-byte payload but with only 3 bytes total.
   const partial = frameServer(utf8("abcdefghij"), 1).subarray(0, 5);
   const buf = bufferFrom(partial);

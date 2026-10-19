@@ -2,13 +2,18 @@
 //   1. HTTP /json/* proxy with ws:// URL rewrite
 //   2. WebSocket handshake + bidirectional frame relay
 //   3. Browser.* intercept returns fake success and does NOT reach Quark
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
+import { type AddressInfo, createServer } from "node:net";
 import {
   ByteBuffer,
+  connectTcp,
   frameClient,
   frameServer,
   readFrame,
   startCdpProxy,
+  type TcpConn,
+  toTcpConn,
 } from "./cdp-proxy.ts";
 
 function utf8(s: string): Uint8Array {
@@ -37,12 +42,9 @@ function startFakeQuark(): {
   received: string[];
 } {
   const received: string[] = [];
-  const listener = Deno.listen({ hostname: "127.0.0.1", port: 0 });
-  const port = (listener.addr as Deno.NetAddr).port;
-
-  const serve = async () => {
-    for await (const conn of listener) {
-      (async () => {
+  const server = createServer((socket) => {
+    const conn = toTcpConn(socket);
+    (async () => {
         const buf = new ByteBuffer(conn.readable.getReader());
         const head = await readHttpHeadForTest(buf);
         if (head.path.startsWith("/json/")) {
@@ -102,13 +104,13 @@ function startFakeQuark(): {
         }
         conn.close();
       })().catch(() => conn.close());
-    }
-  };
-  serve();
+  });
+  server.listen(0, "127.0.0.1");
+  const port = (server.address() as AddressInfo).port;
 
   return {
     port,
-    close: () => listener.close(),
+    close: () => server.close(),
     received,
   };
 }
@@ -136,12 +138,19 @@ async function readHttpHeadForTest(
   return { path: parts[1] ?? "/", headers };
 }
 
-function connect(port: number): Promise<Deno.Conn> {
-  return Deno.connect({ hostname: "127.0.0.1", port });
+function connect(port: number): Promise<TcpConn> {
+  return connectTcp(port, "127.0.0.1");
+}
+
+/** Write a whole HTTP head or frame; `TcpConn` exposes a stream, not `write`. */
+async function writeTo(conn: TcpConn, bytes: Uint8Array): Promise<void> {
+  const writer = conn.writable.getWriter();
+  await writer.write(bytes);
+  writer.releaseLock();
 }
 
 async function readHttpResponse(
-  conn: Deno.Conn,
+  conn: TcpConn,
 ): Promise<{ status: string; headers: Record<string, string>; body: string }> {
   const buf = new ByteBuffer(conn.readable.getReader());
   const head = await readHttpHeadForTest(buf);
@@ -155,12 +164,12 @@ async function readHttpResponse(
   return { status: head.path === "" ? "" : "", headers, body };
 }
 
-Deno.test("CDP proxy: /json/list proxies with ws URL rewrite", async () => {
+test("CDP proxy: /json/list proxies with ws URL rewrite", async () => {
   const fake = startFakeQuark();
   const proxy = startCdpProxy({ quarkPort: fake.port, proxyPort: 0 });
   try {
     const conn = await connect(proxy.port);
-    await conn.write(utf8(
+    await writeTo(conn, utf8(
       "GET /json/list HTTP/1.1\r\n" +
         `Host: 127.0.0.1:${proxy.port}\r\n` +
         "Connection: close\r\n\r\n",
@@ -180,13 +189,13 @@ Deno.test("CDP proxy: /json/list proxies with ws URL rewrite", async () => {
   }
 });
 
-Deno.test("CDP proxy: WS relay forwards frames and returns responses", async () => {
+test("CDP proxy: WS relay forwards frames and returns responses", async () => {
   const fake = startFakeQuark();
   const proxy = startCdpProxy({ quarkPort: fake.port, proxyPort: 0 });
   try {
     const conn = await connect(proxy.port);
     const key = "dGhlIHNhbXBsZSBub25jZQ==";
-    await conn.write(utf8(
+    await writeTo(conn, utf8(
       "GET /devtools/page/1 HTTP/1.1\r\n" +
         `Host: 127.0.0.1:${proxy.port}\r\n` +
         "Upgrade: websocket\r\n" +
@@ -199,7 +208,7 @@ Deno.test("CDP proxy: WS relay forwards frames and returns responses", async () 
     await readHttpHeadForTest(buf);
 
     // send a normal command — expect the fake quark's reply relayed back
-    await conn.write(
+    await writeTo(conn, 
       frameClient(utf8('{"id":1,"method":"Runtime.evaluate","params":{}}'), 1),
     );
     const reply = await readFrame(buf);
@@ -212,12 +221,12 @@ Deno.test("CDP proxy: WS relay forwards frames and returns responses", async () 
   }
 });
 
-Deno.test("CDP proxy: Browser.* commands are intercepted, not forwarded", async () => {
+test("CDP proxy: Browser.* commands are intercepted, not forwarded", async () => {
   const fake = startFakeQuark();
   const proxy = startCdpProxy({ quarkPort: fake.port, proxyPort: 0 });
   try {
     const conn = await connect(proxy.port);
-    await conn.write(utf8(
+    await writeTo(conn, utf8(
       "GET /devtools/page/1 HTTP/1.1\r\n" +
         `Host: 127.0.0.1:${proxy.port}\r\n` +
         "Upgrade: websocket\r\n" +
@@ -228,7 +237,7 @@ Deno.test("CDP proxy: Browser.* commands are intercepted, not forwarded", async 
     const buf = new ByteBuffer(conn.readable.getReader());
     await readHttpHeadForTest(buf);
 
-    await conn.write(
+    await writeTo(conn, 
       frameClient(
         utf8('{"id":42,"method":"Browser.setDownloadBehavior","params":{}}'),
         1,

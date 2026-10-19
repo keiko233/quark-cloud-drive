@@ -10,6 +10,9 @@
 // while Chromium keeps serving.
 
 import { EventPublisher } from "@orpc/server";
+import { readFileSync, statSync } from "node:fs";
+import { readdir, readFile } from "node:fs/promises";
+import { connect as netConnect } from "node:net";
 import type { ProcessState, ServerStatus } from "@quark/contract/schemas";
 import {
   LAUNCH_SCRIPT,
@@ -77,7 +80,7 @@ export class ProcessManager {
   readonly events = new EventPublisher<ProcessEvents>();
 
   private state: ProcessState = "stopped";
-  private proc: Deno.ChildProcess | null = null;
+  private proc: Bun.Subprocess | null = null;
   private pgid: number | null = null;
   private startedAt: number | null = null;
   private lastCdpActivity: number | null = null;
@@ -107,20 +110,23 @@ export class ProcessManager {
 
   /** Authoritative check: is Chromium accepting CDP on the CDP port? */
   async chromiumListening(): Promise<boolean> {
-    try {
-      const conn = await Deno.connect({
-        hostname: QUARK_HOST,
-        port: QUARK_CDP_PORT,
+    return await new Promise<boolean>((resolve) => {
+      const socket = netConnect({ host: QUARK_HOST, port: QUARK_CDP_PORT });
+      socket.once("connect", () => {
+        socket.destroy();
+        resolve(true);
       });
-      conn.close();
-      return true;
-    } catch {
-      return false;
-    }
+      socket.once("error", () => {
+        socket.destroy();
+        resolve(false);
+      });
+    });
   }
 
   private async isProcAlive(): Promise<boolean> {
-    if (this.proc && (await this.proc.status).code === null) return true;
+    // `exitCode` is null while the child is still running: the same question
+    // the Deno version asked of `child.status`, without waiting for the exit.
+    if (this.proc && this.proc.exitCode === null) return true;
     return this.chromiumListening();
   }
 
@@ -129,8 +135,7 @@ export class ProcessManager {
   /** True when the launch script exists on this host (Quark can actually start). */
   launchScriptAvailable(): boolean {
     try {
-      const stat = Deno.statSync(LAUNCH_SCRIPT);
-      return stat.isFile;
+      return statSync(LAUNCH_SCRIPT).isFile();
     } catch {
       return false;
     }
@@ -184,12 +189,11 @@ export class ProcessManager {
     this.setState("starting");
     const cmd = this.buildLaunchCommand();
     try {
-      this.proc = new Deno.Command(cmd.command, {
-        args: cmd.args,
-        env: cmd.env,
-        stdout: "null",
-        stderr: "null",
-      }).spawn();
+      this.proc = Bun.spawn([cmd.command, ...cmd.args], {
+        env: { ...process.env, ...cmd.env },
+        stdout: "ignore",
+        stderr: "ignore",
+      });
     } catch (e) {
       throw new Error(
         `launch-quark failed: ${e instanceof Error ? e.message : e}`,
@@ -219,9 +223,10 @@ export class ProcessManager {
     log.info("stopping Quark");
     const candidate = this.pgid ??
       (this.proc ? readProcessGroup(this.proc.pid) : null);
-    const targetPgid = isOwnProcessGroup(candidate, readProcessGroup(Deno.pid))
-      ? candidate
-      : null;
+    const targetPgid =
+      isOwnProcessGroup(candidate, readProcessGroup(process.pid))
+        ? candidate
+        : null;
     if (candidate !== null && targetPgid === null) {
       // The launcher inherited the container's group instead of creating its
       // own. `kill(-pgid)` would then mean `kill(0)`/`kill(-1)` and take out
@@ -236,7 +241,7 @@ export class ProcessManager {
     // Stage 1: process-group kill (standard runtime).
     if (targetPgid !== null) {
       try {
-        Deno.kill(-targetPgid, "SIGTERM");
+        process.kill(-targetPgid, "SIGTERM");
       } catch {
         // group may already be gone
       }
@@ -254,7 +259,7 @@ export class ProcessManager {
 
     if (targetPgid !== null) {
       try {
-        Deno.kill(-targetPgid, "SIGKILL");
+        process.kill(-targetPgid, "SIGKILL");
       } catch {
         // ignore
       }
@@ -363,10 +368,10 @@ export class ProcessManager {
   private buildLaunchCommand(): {
     command: string;
     args: string[];
-    env: Record<string, string>;
+    env: Record<string, string | undefined>;
   } {
-    const isRoot = (Deno.uid() ?? -1) === 0;
-    const env = { ...Deno.env.toObject() };
+    const isRoot = (process.getuid?.() ?? -1) === 0;
+    const env: Record<string, string | undefined> = { ...process.env };
     if (isRoot) {
       return {
         command: "su",
@@ -380,7 +385,9 @@ export class ProcessManager {
   private resolvePgid(): number | null {
     if (!this.proc) return null;
     const pgid = readProcessGroup(this.proc.pid);
-    return isOwnProcessGroup(pgid, readProcessGroup(Deno.pid)) ? pgid : null;
+    return isOwnProcessGroup(pgid, readProcessGroup(process.pid))
+      ? pgid
+      : null;
   }
 
   private async findQuarkWindows(): Promise<string[]> {
@@ -394,18 +401,18 @@ export class ProcessManager {
 
   private async listMatchingPids(): Promise<number[]> {
     const pids: number[] = [];
-    const myPid = Deno.pid;
-    for await (const dirEntry of Deno.readDir("/proc")) {
-      if (!/^\d+$/.test(dirEntry.name)) continue;
-      const pid = Number(dirEntry.name);
+    const myPid = process.pid;
+    for (const dirEntry of await readdir("/proc")) {
+      if (!/^\d+$/.test(dirEntry)) continue;
+      const pid = Number(dirEntry);
       if (pid === myPid || pid === 1) continue;
       try {
-        const name = (await Deno.readTextFile(`/proc/${pid}/comm`)).trim()
+        const name = (await readFile(`/proc/${pid}/comm`, "utf8")).trim()
           .toLowerCase();
         if (!this.patterns.some((p) => name.includes(p))) continue;
         let cmdline = "";
         try {
-          cmdline = await Deno.readTextFile(`/proc/${pid}/cmdline`);
+          cmdline = await readFile(`/proc/${pid}/cmdline`, "utf8");
         } catch {
           // unreadable — skip
         }
@@ -427,7 +434,7 @@ export class ProcessManager {
   private async killByName(sig: "SIGTERM" | "SIGKILL"): Promise<void> {
     for (const pid of await this.listMatchingPids()) {
       try {
-        Deno.kill(pid, sig);
+        process.kill(pid, sig);
       } catch {
         // already gone
       }
@@ -435,7 +442,7 @@ export class ProcessManager {
   }
 
   private async wineserverK(): Promise<void> {
-    if ((Deno.uid() ?? -1) === 0) {
+    if ((process.getuid?.() ?? -1) === 0) {
       await run([
         "su",
         "-s",
@@ -461,7 +468,7 @@ export class ProcessManager {
  */
 export function readProcessGroup(pid: number): number | null {
   try {
-    const stat = Deno.readTextFileSync(`/proc/${pid}/stat`);
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const pgid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[2]);
     return Number.isInteger(pgid) && pgid > 0 ? pgid : null;
   } catch {
@@ -491,16 +498,16 @@ async function run(
   cmd: string[],
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   try {
-    const p = new Deno.Command(cmd[0], {
-      args: cmd.slice(1),
-      stdout: "piped",
-      stderr: "piped",
-    }).spawn();
-    const { code, stdout, stderr } = await p.output();
+    const p = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+    const [code, stdout, stderr] = await Promise.all([
+      p.exited,
+      new Response(p.stdout).text(),
+      new Response(p.stderr).text(),
+    ]);
     return {
       ok: code === 0,
-      stdout: new TextDecoder().decode(stdout).trim(),
-      stderr: new TextDecoder().decode(stderr).trim(),
+      stdout: stdout.trim(),
+      stderr: stderr.trim(),
     };
   } catch (e) {
     return {

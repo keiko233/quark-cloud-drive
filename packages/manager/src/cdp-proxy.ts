@@ -15,6 +15,7 @@ import {
   log,
   QUARK_CDP_PORT,
 } from "@quark/config";
+import { createServer, connect as netConnect, type Socket } from "node:net";
 
 const QUARK_HOST = "127.0.0.1";
 
@@ -27,6 +28,80 @@ const INTERCEPT = new Set([
 ]);
 
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+// ── socket ⇄ web-stream bridge ───────────────────────────────────────────────
+
+/**
+ * The byte-level side of this proxy was written against `Deno.Conn`, which
+ * exposes a reader/writer pair. A `node:net` socket is an event emitter, so the
+ * two are bridged here instead of rewriting the framing and relay logic.
+ */
+export type TcpConn = {
+  readable: ReadableStream<Uint8Array>;
+  writable: WritableStream<Uint8Array>;
+  close: () => void;
+};
+
+/** Wrap a TCP socket as a reader/writer pair. */
+export function toTcpConn(socket: Socket): TcpConn {
+  const readable = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const close = () => {
+        try {
+          controller.close();
+        } catch {
+          // already closed
+        }
+      };
+      socket.on("data", (chunk: Uint8Array) => {
+        try {
+          controller.enqueue(
+            new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+          );
+        } catch {
+          // consumer went away — the socket is torn down by `cancel`
+        }
+      });
+      socket.on("end", close);
+      socket.on("close", close);
+      socket.on("error", (e) => {
+        try {
+          controller.error(e);
+        } catch {
+          // already errored
+        }
+      });
+    },
+    cancel() {
+      socket.destroy();
+    },
+  });
+
+  const writable = new WritableStream<Uint8Array>({
+    write(chunk) {
+      return new Promise<void>((resolve, reject) => {
+        socket.write(chunk, (err) => err ? reject(err) : resolve());
+      });
+    },
+    close() {
+      socket.end();
+    },
+    abort() {
+      socket.destroy();
+    },
+  });
+
+  return { readable, writable, close: () => socket.destroy() };
+}
+
+/** Connect outward and resolve with the bridged reader/writer pair. */
+export function connectTcp(port: number, host = QUARK_HOST): Promise<TcpConn> {
+  return new Promise<TcpConn>((resolve, reject) => {
+    const socket = netConnect({ host, port });
+    socket.once("connect", () => resolve(toTcpConn(socket)));
+    socket.once("error", reject);
+  });
+}
 
 // ── WebSocket helpers ────────────────────────────────────────────────────────
 
@@ -269,15 +344,15 @@ function replaceBytes(
 // ── WebSocket proxy ──────────────────────────────────────────────────────────
 
 async function proxyWs(
-  clientConn: Deno.Conn,
+  clientConn: TcpConn,
   clientBuf: ByteBuffer,
   quarkPort: number,
   wsPath: string,
   onActivity: () => void,
 ): Promise<void> {
-  let quark: Deno.Conn;
+  let quark: TcpConn;
   try {
-    quark = await Deno.connect({ hostname: QUARK_HOST, port: quarkPort });
+    quark = await connectTcp(quarkPort);
   } catch (e) {
     log.warn(
       `[cdp-proxy] quark not listening on :${quarkPort} — closing client: ${e}`,
@@ -387,7 +462,7 @@ async function proxyWs(
 // ── Connection handler ───────────────────────────────────────────────────────
 
 async function handleConnection(
-  conn: Deno.Conn,
+  conn: TcpConn,
   quarkPort: number,
   proxyPort: number,
   onActivity: () => void,
@@ -458,24 +533,23 @@ export function startCdpProxy(
   const bind = opts.bind ?? CDP_PROXY_BIND;
   const onActivity = opts.onActivity ?? (() => {});
 
-  const listener = Deno.listen({
-    hostname: bind,
-    port: proxyPort,
+  const server = createServer((socket) => {
+    handleConnection(toTcpConn(socket), quarkPort, proxyPort, onActivity)
+      .catch((e) => log.debug(`cdp-proxy connection error: ${e}`));
   });
-  const actualPort = (listener.addr as Deno.NetAddr).port;
-
-  const serve = async () => {
-    for await (const conn of listener) {
-      handleConnection(conn, quarkPort, proxyPort, onActivity)
-        .catch((e) => log.debug(`cdp-proxy connection error: ${e}`));
-    }
-  };
-  serve().catch((e) => log.error(`cdp-proxy serve error: ${e}`));
+  server.on("error", (e) => log.error(`cdp-proxy serve error: ${e}`));
+  server.listen(proxyPort, bind);
+  // Bun binds synchronously, so the real port (including an ephemeral one) is
+  // already known here.
+  const address = server.address();
+  const actualPort = typeof address === "object" && address !== null
+    ? address.port
+    : proxyPort;
 
   log.info(`[cdp-proxy] ${bind}:${actualPort} → ${QUARK_HOST}:${quarkPort}`);
   return {
     close: () => {
-      listener.close();
+      server.close();
     },
     port: actualPort,
   };

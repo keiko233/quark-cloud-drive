@@ -1,11 +1,12 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals } from "@jsr/std__assert";
+import { test } from "bun:test";
 import {
   isOwnProcessGroup,
   ProcessManager,
   readProcessGroup,
 } from "./process.ts";
 
-Deno.test("isOwnProcessGroup refuses group ids shared with the container init", () => {
+test("isOwnProcessGroup refuses group ids shared with the container init", () => {
   // The entrypoint starts X, x11vnc and the manager in PID 1's group, and a
   // launcher inherits it. Signalling it degenerates into kill(0)/kill(-1).
   assertEquals(isOwnProcessGroup(1, 1), false);
@@ -18,22 +19,22 @@ Deno.test("isOwnProcessGroup refuses group ids shared with the container init", 
   assertEquals(isOwnProcessGroup(1175, 42), true);
 });
 
-Deno.test("readProcessGroup parses pgrp and children inherit it", async () => {
-  const own = readProcessGroup(Deno.pid);
+test("readProcessGroup parses pgrp and children inherit it", async () => {
+  const own = readProcessGroup(process.pid);
   assertEquals(typeof own, "number");
 
-  const child = new Deno.Command("sleep", { args: ["10"] }).spawn();
+  const child = Bun.spawn(["sleep", "10"]);
   try {
     // This inheritance is exactly why the group must not be signalled when the
     // launcher was spawned without creating a group of its own.
     assertEquals(readProcessGroup(child.pid), own);
   } finally {
     child.kill();
-    await child.status;
+    await child.exited;
   }
 });
 
-Deno.test("ProcessManager starts in stopped state with zero counters", async () => {
+test("ProcessManager starts in stopped state with zero counters", async () => {
   const pm = new ProcessManager();
   const status = await pm.status();
   assertEquals(status.state, "stopped");
@@ -43,7 +44,7 @@ Deno.test("ProcessManager starts in stopped state with zero counters", async () 
   assertEquals(status.cdpActivityAt, null);
 });
 
-Deno.test("markActivity updates cdpActivityAt", async () => {
+test("markActivity updates cdpActivityAt", async () => {
   const pm = new ProcessManager();
   const before = Date.now();
   pm.markActivity();
@@ -53,7 +54,7 @@ Deno.test("markActivity updates cdpActivityAt", async () => {
   assertBetween(status.cdpActivityAt!, before, after);
 });
 
-Deno.test("events delivers published process transitions", () => {
+test("events delivers published process transitions", () => {
   const pm = new ProcessManager();
   const seen: string[] = [];
   const unsub = pm.events.subscribe("process", (e) => seen.push(e.state));
@@ -73,7 +74,7 @@ Deno.test("events delivers published process transitions", () => {
   assertEquals(seen, [], "no process transitions expected from these calls");
 });
 
-Deno.test("status self-heals stale state against liveness", async () => {
+test("status self-heals stale state against liveness", async () => {
   const pm = new ProcessManager();
   // No Quark running: any non-stopped internal state reports stopped.
   // (Internal state is private; we verify the reported state is consistent
@@ -89,7 +90,7 @@ function assertBetween(value: number, lo: number, hi: number): void {
   }
 }
 
-Deno.test("minimize throws when Quark is not running", async () => {
+test("minimize throws when Quark is not running", async () => {
   const pm = new ProcessManager();
   await pm.minimize().then(
     () => {
@@ -101,7 +102,7 @@ Deno.test("minimize throws when Quark is not running", async () => {
   );
 });
 
-Deno.test("restore throws when Quark is not running", async () => {
+test("restore throws when Quark is not running", async () => {
   const pm = new ProcessManager();
   await pm.restore().then(
     () => {

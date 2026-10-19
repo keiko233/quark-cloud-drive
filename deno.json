@@ -9,10 +9,9 @@
   "tasks": {
     "fmt": "deno fmt",
     "lint": "deno lint",
-    "check": "deno fmt --check && deno lint && deno check apps/server/src/main.ts apps/client/src/main.ts",
+    "check": "deno fmt --check && deno lint && deno check apps/app/src/main.ts",
     "test": "deno test -A --unstable-kv apps packages",
-    "dev:client": "deno task --cwd apps/client dev",
-    "dev:server": "deno task --cwd apps/server dev",
-    "test:e2e:client": "QUARK_E2E=1 deno test -A --unstable-kv apps/client/src/actions/list-file.e2e.test.ts apps/client/src/actions/download.e2e.test.ts"
+    "dev": "deno task --cwd apps/app dev",
+    "test:e2e": "QUARK_E2E=1 deno test -A --unstable-kv packages/drive/src/actions/list-file.e2e.test.ts packages/drive/src/actions/download.e2e.test.ts"
   }
 }

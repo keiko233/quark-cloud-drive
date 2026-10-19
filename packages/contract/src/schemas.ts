@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// ─── Process state (apps/server) ─────────────────────────────────────────────
+// ─── Process state (@quark/manager) ─────────────────────────────────────────────
 
 export const ProcessStateSchema = z.enum([
   "stopped",
@@ -8,7 +8,7 @@ export const ProcessStateSchema = z.enum([
   "running_visible",
   "running_minimized",
 ]).describe(
-  "Process state of Quark as tracked by apps/server: `stopped`, `starting`, " +
+  "Process state of Quark as tracked by @quark/manager: `stopped`, `starting`, " +
     "`running_visible`, or `running_minimized`.",
 );
 
@@ -32,7 +32,7 @@ export const ServerStatusSchema = z.object({
   ),
   cdpActivityAt: z.number().nullable().describe(
     "Epoch ms of the last CDP traffic seen by the proxy, or null if none yet. " +
-      "Exposed so apps/client can make idle decisions without polling CDP itself.",
+      "Exposed so @quark/service can make idle decisions without polling CDP itself.",
   ),
   counts: ProcessCountsSchema,
 });
@@ -41,7 +41,7 @@ export const HealthzSchema = z.object({
   ok: z.boolean(),
 });
 
-// ─── Server events (SSE from apps/server) ────────────────────────────────────
+// ─── Server events (SSE from @quark/manager) ────────────────────────────────────
 
 export const ServerEventSchema = z.union([
   z.object({
@@ -58,7 +58,7 @@ export type ServerEvent = z.infer<typeof ServerEventSchema>;
 
 // ─── Quark business API primitives ───────────────────────────────────────────
 //
-// Every business procedure in apps/client is a direct JSON call to Quark's
+// Every business procedure in @quark/drive is a direct JSON call to Quark's
 // cloud-drive API (`https://drive-pc.quark.cn/1/clouddrive/...`), issued from
 // the logged-in renderer so the session cookie is applied automatically. There
 // is no DOM/CDP fallback and no UI state in any response, so results no longer
@@ -561,7 +561,7 @@ export const BrowserQueueStatusSchema = z.object({
   ),
 });
 
-// ─── Runtime configuration/status (apps/client backend) ────────────────────
+// ─── Runtime configuration/status (@quark/service backend) ────────────────────
 
 export const GuardOperationSchema = z.enum([
   "userInfo",
@@ -629,7 +629,7 @@ export type RuntimeConfigPatch = z.infer<typeof RuntimeConfigPatchSchema>;
 export type LoginState = z.infer<typeof LoginStateSchema>;
 export type RuntimeHealth = z.infer<typeof RuntimeHealthSchema>;
 
-// ─── Client events (global SSE from apps/client) ─────────────────────────────
+// ─── Client events (global SSE from @quark/service) ─────────────────────────────
 
 export const ClientEventSchema = z.union([
   z.object({
@@ -640,7 +640,7 @@ export const ClientEventSchema = z.union([
     type: z.literal("process"),
     state: ProcessStateSchema,
     source: z.literal("server").describe(
-      "These events mirror apps/server process transitions.",
+      "These events mirror @quark/manager process transitions.",
     ),
   }),
   z.object({

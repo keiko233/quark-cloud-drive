@@ -1,8 +1,8 @@
 import type { ErrorMap } from "@orpc/contract";
 
 /**
- * Shared error map for both contracts. The implementers (apps/server and
- * apps/client) use `errors.INTERNAL_SERVER_ERROR` etc. in their error-handling
+ * Shared error map for both contracts. The implementers (@quark/manager and
+ * @quark/service) use `errors.INTERNAL_SERVER_ERROR` etc. in their error-handling
  * middleware, and clients can catch these by code.
  */
 export const sharedErrorMap = {

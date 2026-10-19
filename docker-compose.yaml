@@ -1,13 +1,13 @@
 name: quark-cloud-drive
 
 services:
-  server:
+  app:
     build:
       context: .
-      dockerfile: apps/server/Dockerfile
-    image: ghcr.io/keiko233/quark-server:latest
-    container_name: quark-server
-    hostname: quark-server
+      dockerfile: apps/app/Dockerfile
+    image: ghcr.io/keiko233/quark-cloud-drive:latest
+    container_name: quark-cloud-drive
+    hostname: quark-cloud-drive
     platform: linux/amd64
 
     devices:
@@ -17,14 +17,34 @@ services:
       # Set before startup, e.g. MESA_LOADER_DRIVER_OVERRIDE=iris or radeonsi.
       MESA_LOADER_DRIVER_OVERRIDE: "${MESA_LOADER_DRIVER_OVERRIDE:-}"
 
-      # Thin process manager (Deno). Idle policy moved to the client.
+      # Wine runtime used for the bundled Quark build.
+      QUARK_RUNTIME: "${QUARK_RUNTIME:-spark}"
+
+      # One process owns everything: the manager is embedded (no HTTP hop, no
+      # second container). Set QUARK_MANAGER_MODE=http to point a host-side
+      # instance at this container's manager API instead.
+      QUARK_MANAGER_MODE: "${QUARK_MANAGER_MODE:-embedded}"
+      SERVER_PORT: "${SERVER_PORT:-3000}"
       QUARK_API_PORT: "${QUARK_API_PORT:-8080}"
       QUARK_AUTOSTART: "${QUARK_AUTOSTART:-true}"
 
+      # Deno KV (task history + runtime settings) lives in the app-data volume.
+      QUARK_KV_PATH: "${QUARK_KV_PATH:-./data/kv.sqlite3}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+      RECONNECT_INTERVAL_MS: "${RECONNECT_INTERVAL_MS:-5000}"
+      CLIENT_IDLE_MINIMIZE_AFTER_MS: "${CLIENT_IDLE_MINIMIZE_AFTER_MS:-300000}"
+      CLIENT_IDLE_STOP_AFTER_MS: "${CLIENT_IDLE_STOP_AFTER_MS:-900000}"
+      CLIENT_IDLE_CHECK_INTERVAL_MS: "${CLIENT_IDLE_CHECK_INTERVAL_MS:-30000}"
+
     ports:
-      # Raw VNC (x11vnc). noVNC UI is served by the client at /vnc.
+      # Public API + OpenAPI docs + MCP + noVNC page.
+      - "${SERVER_PORT:-3000}:3000"
+      # Raw VNC (x11vnc).
       - "5900:5900"
+      # CDP proxy: DevTools page and host-side development.
       - "${CDP_PROXY_PORT:-9223}:9223"
+      # Manager API: process lifecycle for external consumers.
       - "${QUARK_API_PORT:-8080}:8080"
 
     volumes:
@@ -32,6 +52,8 @@ services:
       # 6.6.7 installer crashes before creating a visible Electron window.
       - ./wine-data-spark:/opt/spark-bottle/drive_c/users/wineuser/Application Data/quark-cloud-drive
       - ./downloads:/opt/spark-bottle/drive_c/users/wineuser/Downloads
+      # Deno KV (task/download history) survives container restarts.
+      - app-data:/opt/quark-app/data
 
     security_opt:
       - seccomp:unconfined
@@ -41,11 +63,11 @@ services:
     shm_size: "2gb"
 
     healthcheck:
-      # Probe the manager, not the CDP port: when Quark is idle-stopped the
-      # CDP port is intentionally down, but the manager itself is still up.
+      # The app process is the health signal: when Quark is idle-stopped the
+      # manager and the API are still up, so this stays healthy by design.
       test: [
         "CMD-SHELL",
-        "curl -sf http://127.0.0.1:8080/healthz >/dev/null || exit 1",
+        "curl -sf http://127.0.0.1:3000/healthz >/dev/null || exit 1",
       ]
       interval: 30s
       timeout: 10s
@@ -54,41 +76,6 @@ services:
 
     restart: unless-stopped
 
-  client:
-    build:
-      context: .
-      dockerfile: apps/client/Dockerfile
-    image: ghcr.io/keiko233/quark-client:latest
-    container_name: quark-client
-
-    environment:
-      # server is reachable by name on the compose network.
-      SERVER_URL: "${SERVER_URL:-http://server:8080}"
-      CDP_URL: "${CDP_URL:-http://server:9223}"
-      VNC_URL: "${VNC_URL:-http://server:5900}"
-      SERVER_PORT: "${SERVER_PORT:-3000}"
-      LOG_LEVEL: "${LOG_LEVEL:-info}"
-      RECONNECT_INTERVAL_MS: "${RECONNECT_INTERVAL_MS:-5000}"
-      CLIENT_IDLE_MINIMIZE_AFTER_MS: "${CLIENT_IDLE_MINIMIZE_AFTER_MS:-300000}"
-      CLIENT_IDLE_STOP_AFTER_MS: "${CLIENT_IDLE_STOP_AFTER_MS:-900000}"
-      CLIENT_IDLE_CHECK_INTERVAL_MS: "${CLIENT_IDLE_CHECK_INTERVAL_MS:-30000}"
-
-    depends_on:
-      server:
-        condition: service_healthy
-
-    ports:
-      - "${SERVER_PORT:-3000}:3000"
-
-    volumes:
-      # Deno KV (task/download history) survives container restarts.
-      - client-data:/app/apps/client/data
-
-    security_opt:
-      - seccomp:unconfined
-
-    restart: unless-stopped
-
 volumes:
-  client-data:
+  app-data:
     driver: local

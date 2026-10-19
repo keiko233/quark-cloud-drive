@@ -1,45 +1,51 @@
 # quark-cloud-drive
 
-Monorepo for the Quark Cloud Drive automation stack. It merges two former
-standalone projects into a single repo:
+Monorepo for the Quark Cloud Drive automation stack.
 
-- **`quark-docker/`** — a Docker image that runs the Quark Cloud Drive desktop
-  client under Wine/Electron with Xorg + VNC/noVNC, plus a Python manager
-  (FastAPI) providing a REST API: process lifecycle (`/start`, `/stop`,
-  `/restart`), window control (`/minimize`, `/restore`), status, and a two-stage
-  idle/monitor CDP proxy (9223 → 9222).
+**One image, one entrypoint, one process.** The container runs the Quark Cloud
+Drive desktop client under Wine/Electron with Xorg + x11vnc, and a single Deno
+process owns everything else: process lifecycle, the CDP proxy, the manager API,
+the business API + MCP + noVNC surface, and the idle policy. There is no
+separate client container and no runtime split.
 
-- **`quark-cdp-client/`** — a Deno service that attaches to the browser over CDP
-  (the one running inside `quark-docker`) and exposes a small HTTP API for Quark
-  Cloud Drive. Business endpoints are Quark JSON API calls evaluated inside the
-  logged-in renderer (no DOM automation); CDP is only the transport into that
-  renderer. It calls the manager's `/start` before each business request and
-  re-exposes `/manager/*` passthrough routes.
+Business endpoints are Quark JSON API calls evaluated inside the logged-in
+renderer; CDP is only the transport into that renderer, never a UI driver.
 
-The top-level `docker-compose.yaml` orchestrates both services together on a
-shared network.
+## Packages
+
+Each package owns one responsibility:
+
+| Package           | Responsibility                                                        |
+| ----------------- | --------------------------------------------------------------------- |
+| `@quark/contract` | oRPC contracts + zod schemas (the API definition)                     |
+| `@quark/config`   | Every runtime knob: env parsing + the shared logger                   |
+| `@quark/manager`  | Wine/Electron process lifecycle, CDP proxy, manager API, its client   |
+| `@quark/drive`    | The logged-in session and the Quark business capabilities             |
+| `@quark/service`  | Public surface (REST/OpenAPI/MCP/noVNC/DevTools), policy, composition |
+| `apps/app`        | The single entrypoint + the single Docker image                       |
+
+`@quark/manager` exposes one `ManagerApi` interface with two transports: an
+in-process (embedded) one — what the image uses — and an HTTP one for host-side
+development against a containerized manager.
 
 ## Structure
 
 ```
 quark-cloud-drive/
-├── docker-compose.yaml        # server + client, shared network
+├── docker-compose.yaml        # one service
 ├── deno.json                  # workspace + tasks (fmt/lint/check/test)
 ├── .env.example               # all tunable env vars
 ├── apps/
-│   ├── server/                # process manager + CDP proxy
-│   │   ├── Dockerfile
-│   │   ├── scripts/           # launch-quark.sh, wine prefix prep
-│   │   └── src/               # process.ts, cdp-proxy.ts, main.ts
-│   └── client/                # remote client
+│   └── app/                   # the single entrypoint + Dockerfile
 │       ├── Dockerfile
-│       └── src/
-│           ├── rpc/           # router, mcp, vnc, devtools
-│           ├── browser/       # Playwright CDP driver
-│           ├── monitor/       # idle policy (minimize -> stop)
-│           ├── queue/         # operation queue
-│           └── store/         # Deno KV task/download history
-└── packages/contract/src/     # shared oRPC contracts + zod schemas
+│       ├── scripts/           # run-quark.sh, launch-quark.sh, wine prefix prep
+│       └── src/main.ts        # await bootstrap()
+└── packages/
+    ├── contract/src/          # oRPC contracts + zod schemas
+    ├── config/src/            # env.ts + logger.ts
+    ├── manager/src/           # process.ts, cdp-proxy.ts, manager-app.ts, client.ts
+    ├── drive/src/             # actions/, browser/, cache/, queue/, store/
+    └── service/src/           # rpc/, session/, monitor/, guard.ts, bootstrap.ts
 ```
 
 ## Quick start
@@ -51,10 +57,9 @@ docker compose up --build
 
 Services:
 
-| Container          | What it runs                   | Host mapping                                                                       |
-| ------------------ | ------------------------------ | ---------------------------------------------------------------------------------- |
-| `quark-docker`     | Quark under Wine + manager API | VNC `:5900`, noVNC `:6080`, Manager `:8080`, CDP `:9223` (`REMOTE_DEBUGGING_PORT`) |
-| `quark-cdp-client` | Deno CDP -> HTTP API           | HTTP `:3000`                                                                       |
+| Container           | Host mapping                                                             |
+| ------------------- | ------------------------------------------------------------------------ |
+| `quark-cloud-drive` | API + MCP + noVNC `:3000`, Manager `:8080`, CDP `:9223`, raw VNC `:5900` |
 
 Notes:
 
@@ -64,74 +69,71 @@ Notes:
 - On every Quark launch, the server normalizes the mounted wine-data settings:
   downloads are enabled at `C:\\users\\wineuser\\Downloads` and the desktop
   floating window remains disabled. Other Quark settings are preserved.
-- The client's Deno KV store survives restarts via the `client-data` volume.
+- The Deno KV store (task history + runtime settings) survives restarts via the
+  `app-data` volume.
+- `/manager/*` on `:3000` and the manager API on `:8080` are the same process.
+  `:8080` exists for external consumers and for host-side development.
 
 ### Local dev
 
-For daily development, use a Docker server with a host-side client:
-`apps/server` runs Quark/Wine, Xorg/VNC, and the CDP proxy inside Docker, while
-`apps/client` runs the Deno development server on the host and connects to the
-Docker-published manager/CDP ports. This avoids rebuilding the client image when
-iterating on Playwright operations.
+For daily development, run the app inside Docker and put a second instance of
+the same code on the host, pointed at the container's manager. The container
+owns Wine/Quark, Xorg/VNC and the CDP proxy; the host-side instance owns only
+the API surface and connects over HTTP. This avoids rebuilding the (large) app
+image when iterating on API code.
 
 ```bash
-docker compose up -d --build server
-deno task dev:client    # boot apps/client on the host with --watch
+docker compose up -d --build
+QUARK_MANAGER_MODE=http deno task dev    # host-side service with --watch
 ```
 
-The host-side client defaults match the Compose port mappings:
+Stop the container's own service port first, or set `SERVER_PORT=3001` — the
+host instance binds `:3000` by default. The host-side defaults match the Compose
+port mappings:
 
-- `SERVER_URL=http://127.0.0.1:8080` — Docker server manager API
-- `CDP_URL=http://127.0.0.1:9223` — Docker server CDP proxy
+- `QUARK_MANAGER_URL=http://127.0.0.1:8080` — container manager API
+- `CDP_URL=http://127.0.0.1:9223` — container CDP proxy
 
-You can also copy `.env.example` to `.env` and then run `deno task dev:client`.
-Use `deno task dev:server` only when working on the server manager itself; that
-mode does not include the Quark/Wine runtime and cannot validate real Playwright
-page operations.
+Copy `.env.example` to `.env` to set those once. A host-side instance has no
+Wine runtime, so it cannot boot Quark itself: it drives the container's manager.
 
-To debug Playwright page operations, open the host-side client's
-`http://127.0.0.1:3000/devtools` and select the relevant Quark target to inspect
-the live DOM, console, and network requests. The CDP target list is also
-available at `http://127.0.0.1:3000/devtools/api/targets`. Use the observed page
-structure as the source of truth before changing selectors.
-
-The full Compose stack, including the containerized client, remains available:
-
-```bash
-docker compose up --build
-```
+To inspect the live renderer, open `http://127.0.0.1:3000/devtools` and select
+the Quark target. The CDP target list is also available at
+`http://127.0.0.1:3000/devtools/api/targets`.
 
 Without a Wine/Quark launch script present, `QUARK_AUTOSTART` is skipped with a
 warning and the manager + CDP proxy still come up.
 
 ## Env
 
-Full list in `.env.example`. Key groups (defaults baked into each app's
-`env.ts`):
+Full list in `.env.example`; every default lives in
+`packages/config/src/env.ts`:
 
 - Common: `DOCKER_CPUS`, `DOCKER_MEMORY`.
-- Server (`apps/server`): `QUARK_API_PORT` (8080), `QUARK_CDP_PORT` (9222),
-  `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`, `LAUNCH_SCRIPT`, `WINE_*`.
-- Client (`apps/client`): `SERVER_URL`, `CDP_URL`, `VNC_URL`, `SERVER_PORT`
-  (3000), `CLIENT_IDLE_*` (first-run monitor defaults), `QUEUE_*`,
-  `CLIENT_KV_PATH`, `LOG_LEVEL`. After first boot, `/config` in Deno KV is
-  authoritative and can be changed without restarting the client. For host-side
-  client development, use `SERVER_URL=http://127.0.0.1:8080` and
-  `CDP_URL=http://127.0.0.1:9223`.
+- Manager runtime: `QUARK_RUNTIME` (`spark`), `QUARK_API_PORT` (8080),
+  `QUARK_CDP_PORT` (9222), `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`,
+  `LAUNCH_SCRIPT`, `WINE_*`.
+- Wiring: `QUARK_MANAGER_MODE` (`embedded` | `http`), `QUARK_MANAGER_URL`,
+  `SERVER_PORT` (3000), `CDP_URL`, `VNC_URL`.
+- Policy/queue: `CLIENT_IDLE_*` (first-run monitor defaults), `QUEUE_*`. After
+  first boot, `/config` in Deno KV is authoritative and can be changed without
+  restarting.
+- Persistence/logging: `QUARK_KV_PATH`, `LOG_LEVEL`.
 
 ## API surfaces
 
-- **Server** (`http://localhost:8080`) — plain `/healthz`; OpenAPI spec at
-  `/openapi.json`; manager routes `/status`, `/start`, `/stop`, `/restart`,
-  `/minimize`, `/restore`, and `/events` (SSE of process state + CDP activity).
-- **Client** (`http://localhost:3000`) — OpenAPI docs at `/`, spec at
-  `/spec.json`. Runtime endpoints are `GET/PATCH /config` and `GET /status`.
-  `/status` reports process state, login state, active cloud-task count, queue
-  pressure, a 0–100 readiness score, monitor timing/decision, and guard state.
-  Business endpoints: `/version`, `/queue-status`, `/events`, `/login-qrcode`,
-  `/login-status`, `/user-info`, `/list-file`, `/file-info`, `/download-file`,
-  `/download-task`, `/task-list`, `/import-share-link`. The manager surface is
-  re-exposed under `/manager/*` (forwarded to the server contract).
+- **Manager** (`http://localhost:8080`, same process) — plain `/healthz`;
+  OpenAPI spec at `/spec.json`; manager routes `/status`, `/start`, `/stop`,
+  `/restart`, `/minimize`, `/restore`, and `/events` (SSE of process state + CDP
+  activity).
+- **App** (`http://localhost:3000`) — OpenAPI docs at `/`, spec at `/spec.json`.
+  Runtime endpoints are `GET/PATCH /config` and `GET /status`. `/status` reports
+  process state, login state, active cloud-task count, queue pressure, a 0–100
+  readiness score, monitor timing/decision, and guard state. Business endpoints:
+  `/version`, `/queue-status`, `/events`, `/login-qrcode`, `/login-status`,
+  `/user-info`, `/list-file`, `/file-info`, `/download-file`, `/download-task`,
+  `/task-list`, `/import-share-link`. The manager surface is re-exposed under
+  `/manager/*` (forwarded to the server contract).
 - **Business endpoints never drive the Quark UI.** Each one is a direct call to
   Quark's cloud-drive JSON API issued as a same-origin `fetch` inside the
   logged-in renderer, so the session cookie is applied by the browser and never
@@ -196,11 +198,10 @@ deno task test     # unit + contract + mcp tests (Deno KV)
 
 The `list-file` API integration test requires a real Quark page and an active
 login, so it is skipped by default and does not run in CI's `deno task test`.
-After starting the Docker server and host-side client locally, run it
-explicitly:
+After starting the stack locally, run it explicitly:
 
 ```bash
-deno task test:e2e:client
+deno task test:e2e
 ```
 
 The test verifies plain JSON responses for the root and a direct `fid` lookup,
@@ -211,11 +212,14 @@ the task to report `finish`, checks the artifact in the app's Downloads folder
 (host mount `<repo>/downloads`, override with `QUARK_DOWNLOADS_HOST_DIR`), then
 cancels the task and removes the file. CI can keep using the default unit tests
 without a Quark/Wine login; if CI later provides a login session, set
-`QUARK_E2E=1`, `CLIENT_URL`, and `CDP_URL` to run the same tests.
+`QUARK_E2E=1`, `QUARK_API_URL`, and `CDP_URL` to run the same tests.
 
 ## CI
 
-`.github/workflows/` builds and pushes both images to GHCR on push to `main`:
+`.github/workflows/app.yml` builds and pushes the single image to GHCR on push
+to `main`:
 
-- `server.yml` — builds `ghcr.io/keiko233/quark-server` (Wine prefix + runtime).
-- `client.yml` — builds `ghcr.io/keiko233/quark-client`.
+- `ghcr.io/keiko233/quark-cloud-drive` — Wine prefix + Quark + the Deno app.
+
+It replaces the former `quark-server` and `quark-client` images, which are no
+longer built.

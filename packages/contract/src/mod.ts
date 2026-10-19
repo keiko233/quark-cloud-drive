@@ -1,5 +1,5 @@
 // Shared contract + schemas for quark-cloud-drive.
-// Single source of truth for the RPC surface of apps/server and apps/client.
+// Single source of truth for the RPC surface of @quark/manager and @quark/service.
 
 export * from "./schemas.ts";
 export * from "./errors.ts";

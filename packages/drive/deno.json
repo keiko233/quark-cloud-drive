@@ -1,0 +1,22 @@
+{
+  "name": "@quark/drive",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "imports": {
+    "@orpc/server": "npm:@orpc/server@^1.15.0",
+    "@std/assert": "jsr:@std/assert@^1.0.19",
+    "playwright": "npm:playwright@^1.62.1"
+  },
+  "tasks": {
+    "test": "QUARK_KV_PATH=/tmp/quark-drive-kv.test.sqlite3 deno test -A --unstable-kv"
+  },
+  "lint": {
+    "rules": {
+      "exclude": [
+        "no-slow-types"
+      ]
+    }
+  }
+}

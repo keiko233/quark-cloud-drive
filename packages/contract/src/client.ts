@@ -29,7 +29,7 @@ import {
 } from "./schemas.ts";
 
 /**
- * apps/client contract — the orchestration + business surface.
+ * @quark/service contract — the orchestration + business surface.
  *
  * Every business procedure is a direct call to Quark's cloud-drive JSON API,
  * issued inside the logged-in renderer. Nothing drives the Quark UI: there is
@@ -334,15 +334,15 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     }))
     .output(QuarkImportShareLinkResultSchema),
 
-  // Manager surface — the same process/window controls apps/server exposes,
-  // re-exposed through the client so API + MCP consumers can drive the Quark
+  // Manager surface — the same process/window controls @quark/manager exposes,
+  // re-exposed through this service so API + MCP consumers can drive the Quark
   // process without talking to the manager directly. Each handler forwards to
-  // the typed serverClient. `events` mirrors the server's SSE process stream.
+  // the typed manager client. `events` mirrors the manager's SSE process stream.
   manager: oc.errors(sharedErrorMap).router({
     healthz: oc.route({
       method: "GET",
       path: "/manager/healthz",
-      description: "Liveness probe of the upstream manager (apps/server).",
+      description: "Liveness probe of the upstream manager (@quark/manager).",
     })
       .meta({ mcp: { tool: true } })
       .output(HealthzSchema),

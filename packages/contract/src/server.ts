@@ -7,13 +7,13 @@ import {
 import { sharedErrorMap } from "./errors.ts";
 
 /**
- * apps/server contract — the thin process manager surface.
+ * @quark/manager contract — the thin process manager surface.
  *
- * apps/server owns ONLY process lifecycle + window state + the CDP proxy.
- * All idle/sleep policy lives in apps/client; this contract deliberately
+ * @quark/manager owns ONLY process lifecycle + window state + the CDP proxy.
+ * All idle/sleep policy lives in @quark/service; this contract deliberately
  * carries no idle-timer / cpu-threshold fields.
  *
- * apps/client consumes this via a typed oRPC client (see apps/client).
+ * @quark/service consumes this via a typed oRPC client (see @quark/service).
  */
 export const serverContract = oc.errors(sharedErrorMap).router({
   healthz: oc.route({
@@ -28,7 +28,7 @@ export const serverContract = oc.errors(sharedErrorMap).router({
     description: [
       "Snapshot of the process state: state, tracked PID, authoritative",
       "CDP liveness, last CDP activity, and lifecycle counters. No idle",
-      "policy data — idle decisions live in apps/client.",
+      "policy data — idle decisions live in @quark/service.",
     ].join("\n"),
   }).output(ServerStatusSchema),
 

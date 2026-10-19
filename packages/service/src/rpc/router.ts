@@ -1,0 +1,281 @@
+// Implementation of the shared clientContract (packages/contract). Mutating
+// actions run through the single-slot OperationQueue. Every business procedure
+// is a direct Quark JSON API call issued from the logged-in renderer; no action
+// drives the Quark UI, so business responses are plain JSON (no SSE).
+
+import { implement } from "@orpc/server";
+import { clientContract } from "@quark/contract/client";
+import type { ClientEvent } from "@quark/contract/schemas";
+import {
+  downloadFile,
+  downloadTaskList,
+  fileInfo,
+  importShareLink,
+  listFile,
+  loginStatus,
+  startDownload,
+  taskList,
+  updateDownloadTask,
+  updateTask,
+  userInfo,
+} from "@quark/drive";
+import { getBrowser, getOperationQueue } from "@quark/drive";
+import { Channel } from "@quark/drive";
+import { getManager } from "@quark/manager";
+import { loginQRCode } from "../session/login-qrcode.ts";
+import { sleeper } from "./runtime.ts";
+import { assertOperationAllowed } from "../guard.ts";
+import { getRuntimeConfig, updateRuntimeConfig } from "@quark/drive";
+import {
+  clearLoggedOutStopMarker,
+  clearManualStop,
+  getSavedRuntimeStatus,
+  makeRuntimeStatus,
+  markManualStop,
+} from "../monitor/status.ts";
+import { readLoginStateRaw } from "@quark/drive";
+
+const base = implement(clientContract).use(async ({ next, errors }) => {
+  try {
+    return await next();
+  } catch (error) {
+    if (typeof (error as { code?: unknown }).code === "string") throw error;
+    throw errors.INTERNAL_SERVER_ERROR({
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+export const clientRouter = base.router({
+  config: base.config.handler(() => getRuntimeConfig()),
+
+  updateConfig: base.updateConfig.handler(({ input }) =>
+    updateRuntimeConfig(input.body)
+  ),
+
+  status: base.status.handler(async () => {
+    const process = await getManager().status();
+    const status = await sleeper.status() ?? await getSavedRuntimeStatus();
+    const config = await getRuntimeConfig();
+    if (status) {
+      const login = process.state === "stopped" || process.state === "starting"
+        ? "unknown"
+        : readLoginStateRaw();
+      return makeRuntimeStatus({
+        process,
+        login,
+        runningTasks: status.tasks.running,
+        tasksCheckedAt: status.tasks.checkedAt,
+        queue: getOperationQueue().status(),
+        idleForMs: status.idleForMs,
+        config,
+        lastCheckAt: status.monitor.lastCheckAt,
+        nextCheckAt: status.monitor.nextCheckAt,
+        lastDecision: status.monitor.lastDecision,
+        lastReason: status.monitor.lastReason,
+        lastError: status.lastError,
+      });
+    }
+    return makeRuntimeStatus({
+      process,
+      login: readLoginStateRaw(),
+      runningTasks: null,
+      tasksCheckedAt: null,
+      queue: getOperationQueue().status(),
+      idleForMs: 0,
+      config,
+      lastCheckAt: null,
+      nextCheckAt: null,
+      lastDecision: null,
+      lastReason: null,
+      lastError: null,
+    });
+  }),
+
+  version: base.version.handler(() => ({ version: getBrowser().version() })),
+
+  queueStatus: base.queueStatus.handler(() => getOperationQueue().status()),
+
+  events: base.events.handler(async function* ({ signal }) {
+    // Merge every event source into one channel, then relay it out as SSE.
+    const merged = new Channel<ClientEvent>();
+    const unsubscribes = [
+      getOperationQueue().events.subscribe(
+        "change",
+        (e) => merged.push({ type: "queue", status: e.status }),
+      ),
+      getOperationQueue().events.subscribe(
+        "operation",
+        (e) =>
+          merged.push({ type: "operation", key: e.key ?? "", phase: e.phase }),
+      ),
+      sleeper.events.subscribe("decision", (e) => {
+        if (e.action === "none") return;
+        merged.push({
+          type: "monitor",
+          decision: e.action,
+          reason: e.reason,
+        });
+      }),
+      sleeper.events.subscribe(
+        "status",
+        (e) => merged.push({ type: "status", status: e.status }),
+      ),
+    ];
+
+    // Mirror the server's process stream into the same channel.
+    const serverEvents = await getManager().events({ signal });
+    const mirrorServer = (async () => {
+      try {
+        for await (const ev of serverEvents) {
+          if (ev.type !== "process") continue;
+          merged.push({ type: "process", state: ev.state, source: "server" });
+        }
+      } catch {
+        // server stream ended/aborted
+      }
+    })();
+
+    try {
+      while (true) {
+        const event = await merged.recv();
+        if (event === null) break;
+        yield event;
+      }
+    } finally {
+      merged.close();
+      for (const unsub of unsubscribes) unsub();
+      await mirrorServer.catch(() => {});
+    }
+  }),
+
+  loginQRCode: base.loginQRCode.handler(async () => {
+    const bytes = await loginQRCode();
+    return new File([Uint8Array.from(bytes)], "login-qrcode.png", {
+      type: "image/png",
+    });
+  }),
+
+  loginStatus: base.loginStatus.handler(({ input }) =>
+    loginStatus({ raw: input.query?.raw })
+  ),
+  userInfo: base.userInfo.handler(async ({ input }) => {
+    await assertOperationAllowed("userInfo");
+    return await userInfo({ raw: input.query?.raw });
+  }),
+
+  listFile: base.listFile.handler(async ({ input }) => {
+    await assertOperationAllowed("listFile");
+    return await listFile({
+      fid: input.query?.fid,
+      raw: input.query?.raw,
+    });
+  }),
+
+  fileInfo: base.fileInfo.handler(async ({ input }) => {
+    await assertOperationAllowed("fileInfo");
+    return await fileInfo({
+      fid: input.query.fid,
+      raw: input.query.raw,
+    });
+  }),
+
+  downloadFile: base.downloadFile.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadFile");
+    return await downloadFile(input.query.fid, {
+      limit: input.query.limit,
+      raw: input.query.raw,
+    });
+  }),
+
+  startDownload: base.startDownload.handler(async ({ input }) => {
+    await assertOperationAllowed("startDownload");
+    return await startDownload({
+      fid: input.body.fid,
+      toDir: input.body.toDir,
+      raw: input.body.raw,
+    });
+  }),
+
+  downloadTaskList: base.downloadTaskList.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadTask");
+    return await downloadTaskList({ raw: input.query?.raw });
+  }),
+
+  updateDownloadTask: base.updateDownloadTask.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadTask");
+    return await updateDownloadTask({
+      taskIds: input.body.taskIds,
+      operation: input.body.operation,
+      raw: input.body.raw,
+    });
+  }),
+
+  taskList: base.taskList.handler(async ({ input }) => {
+    await assertOperationAllowed("listTask");
+    return await taskList({
+      status: input.query?.status,
+      type: input.query?.type,
+      size: input.query?.size,
+      cursor: input.query?.cursor,
+      raw: input.query?.raw,
+    });
+  }),
+
+  updateTask: base.updateTask.handler(async ({ input }) => {
+    await assertOperationAllowed("updateTask");
+    return await updateTask({
+      taskIds: input.body.taskIds,
+      operation: input.body.operation,
+      raw: input.body.raw,
+    });
+  }),
+
+  importShareLink: base.importShareLink.handler(async ({ input }) => {
+    await assertOperationAllowed("importShareLink");
+    return await importShareLink(input.body.url, {
+      passcode: input.body.passcode,
+      toFid: input.body.toFid,
+      raw: input.body.raw,
+    });
+  }),
+
+  // Manager surface — thin forwards to @quark/manager (embedded, or a remote
+  // manager over HTTP). Enables API + MCP consumers to control the Quark
+  // process through this service.
+  manager: base.manager.router({
+    healthz: base.manager.healthz.handler(() => getManager().healthz()),
+
+    status: base.manager.status.handler(() => getManager().status()),
+
+    start: base.manager.start.handler(async () => {
+      await clearManualStop();
+      await clearLoggedOutStopMarker();
+      sleeper.clearDecision();
+      return await getManager().start();
+    }),
+
+    stop: base.manager.stop.handler(async () => {
+      // An explicit stop must stick: without this marker the reconnect loop
+      // would wake Quark again within seconds.
+      await markManualStop();
+      return await getManager().stop();
+    }),
+
+    restart: base.manager.restart.handler(async () => {
+      await clearManualStop();
+      await clearLoggedOutStopMarker();
+      sleeper.clearDecision();
+      return await getManager().restart();
+    }),
+
+    minimize: base.manager.minimize.handler(() => getManager().minimize()),
+
+    restore: base.manager.restore.handler(() => getManager().restore()),
+
+    events: base.manager.events.handler(async function* ({ signal }) {
+      const serverEvents = await getManager().events({ signal });
+      yield* serverEvents;
+    }),
+  }),
+});

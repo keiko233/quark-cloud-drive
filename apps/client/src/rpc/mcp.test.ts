@@ -15,8 +15,12 @@ Deno.test("MCP tool names: snake_case conversion", () => {
   assertEquals(snakeImpl("queueStatus"), "queue_status");
   assertEquals(snakeImpl("loginQRCode"), "login_qr_code");
   assertEquals(snakeImpl("listFile"), "list_file");
-  assertEquals(snakeImpl("downloadStatus"), "download_status");
-  assertEquals(snakeImpl("updateDownloadStatus"), "update_download_status");
+  assertEquals(snakeImpl("fileInfo"), "file_info");
+  assertEquals(snakeImpl("taskList"), "task_list");
+  assertEquals(snakeImpl("updateTask"), "update_task");
+  assertEquals(snakeImpl("startDownload"), "start_download");
+  assertEquals(snakeImpl("downloadTaskList"), "download_task_list");
+  assertEquals(snakeImpl("updateDownloadTask"), "update_download_task");
   assertEquals(snakeImpl("importShareLink"), "import_share_link");
 });
 
@@ -46,9 +50,13 @@ Deno.test("MCP: every business procedure opts in via contract meta", () => {
       "loginStatus",
       "userInfo",
       "listFile",
+      "fileInfo",
       "downloadFile",
-      "downloadStatus",
-      "updateDownloadStatus",
+      "startDownload",
+      "downloadTaskList",
+      "updateDownloadTask",
+      "taskList",
+      "updateTask",
       "importShareLink",
     ],
   );
@@ -91,7 +99,7 @@ Deno.test("MCP: snake export matches helper", () => {
       "loginQRCode",
       "downloadFile",
       "version",
-      "updateDownloadStatus",
+      "updateTask",
     ]
   ) {
     assertEquals(snake(input), snakeImpl(input));

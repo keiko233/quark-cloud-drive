@@ -1,18 +1,23 @@
-// Implementation of the shared clientContract (packages/contract). All
-// business actions run through the single-slot OperationQueue; long operations
-// stream SSE progress.
+// Implementation of the shared clientContract (packages/contract). Mutating
+// actions run through the single-slot OperationQueue. Every business procedure
+// is a direct Quark JSON API call issued from the logged-in renderer; no action
+// drives the Quark UI, so business responses are plain JSON (no SSE).
 
 import { implement } from "@orpc/server";
 import { clientContract } from "@quark/contract/client";
 import type { ClientEvent } from "@quark/contract/schemas";
 import {
   downloadFile,
-  downloadStatus,
+  downloadTaskList,
+  fileInfo,
   importShareLink,
   listFile,
   loginQRCode,
   loginStatus,
-  updateDownloadStatus,
+  startDownload,
+  taskList,
+  updateDownloadTask,
+  updateTask,
   userInfo,
 } from "../actions/index.ts";
 import { getBrowser, getOperationQueue } from "../browser/context.ts";
@@ -59,8 +64,8 @@ export const clientRouter = base.router({
       return makeRuntimeStatus({
         process,
         login,
-        runningDownloads: status.downloads.running,
-        downloadsCheckedAt: status.downloads.checkedAt,
+        runningTasks: status.tasks.running,
+        tasksCheckedAt: status.tasks.checkedAt,
         queue: getOperationQueue().status(),
         idleForMs: status.idleForMs,
         config,
@@ -74,8 +79,8 @@ export const clientRouter = base.router({
     return makeRuntimeStatus({
       process,
       login: readLoginStateRaw(),
-      runningDownloads: null,
-      downloadsCheckedAt: null,
+      runningTasks: null,
+      tasksCheckedAt: null,
       queue: getOperationQueue().status(),
       idleForMs: 0,
       config,
@@ -151,38 +156,88 @@ export const clientRouter = base.router({
     });
   }),
 
-  loginStatus: base.loginStatus.handler(() => loginStatus()),
-  userInfo: base.userInfo.handler(async () => {
+  loginStatus: base.loginStatus.handler(({ input }) =>
+    loginStatus({ raw: input.query?.raw })
+  ),
+  userInfo: base.userInfo.handler(async ({ input }) => {
     await assertOperationAllowed("userInfo");
-    return await userInfo();
+    return await userInfo({ raw: input.query?.raw });
   }),
 
   listFile: base.listFile.handler(async ({ input }) => {
     await assertOperationAllowed("listFile");
-    return await listFile(input.query?.path);
+    return await listFile({
+      fid: input.query?.fid,
+      raw: input.query?.raw,
+    });
+  }),
+
+  fileInfo: base.fileInfo.handler(async ({ input }) => {
+    await assertOperationAllowed("fileInfo");
+    return await fileInfo({
+      fid: input.query.fid,
+      raw: input.query.raw,
+    });
   }),
 
   downloadFile: base.downloadFile.handler(async ({ input }) => {
     await assertOperationAllowed("downloadFile");
-    return await downloadFile(input.query.path);
+    return await downloadFile(input.query.fid, {
+      limit: input.query.limit,
+      raw: input.query.raw,
+    });
   }),
 
-  downloadStatus: base.downloadStatus.handler(async ({ input }) => {
-    await assertOperationAllowed("downloadStatus");
-    return await downloadStatus(input.query?.status);
+  startDownload: base.startDownload.handler(async ({ input }) => {
+    await assertOperationAllowed("startDownload");
+    return await startDownload({
+      fid: input.body.fid,
+      toDir: input.body.toDir,
+      raw: input.body.raw,
+    });
   }),
 
-  updateDownloadStatus: base.updateDownloadStatus.handler(async ({ input }) => {
-    await assertOperationAllowed("updateDownloadStatus");
-    return await updateDownloadStatus(
-      input.body.taskName,
-      input.body.operation,
-    );
+  downloadTaskList: base.downloadTaskList.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadTask");
+    return await downloadTaskList({ raw: input.query?.raw });
+  }),
+
+  updateDownloadTask: base.updateDownloadTask.handler(async ({ input }) => {
+    await assertOperationAllowed("downloadTask");
+    return await updateDownloadTask({
+      taskIds: input.body.taskIds,
+      operation: input.body.operation,
+      raw: input.body.raw,
+    });
+  }),
+
+  taskList: base.taskList.handler(async ({ input }) => {
+    await assertOperationAllowed("listTask");
+    return await taskList({
+      status: input.query?.status,
+      type: input.query?.type,
+      size: input.query?.size,
+      cursor: input.query?.cursor,
+      raw: input.query?.raw,
+    });
+  }),
+
+  updateTask: base.updateTask.handler(async ({ input }) => {
+    await assertOperationAllowed("updateTask");
+    return await updateTask({
+      taskIds: input.body.taskIds,
+      operation: input.body.operation,
+      raw: input.body.raw,
+    });
   }),
 
   importShareLink: base.importShareLink.handler(async ({ input }) => {
     await assertOperationAllowed("importShareLink");
-    return await importShareLink(input.body.url);
+    return await importShareLink(input.body.url, {
+      passcode: input.body.passcode,
+      toFid: input.body.toFid,
+      raw: input.body.raw,
+    });
   }),
 
   // Manager surface — thin forwards to apps/server via the typed serverClient.

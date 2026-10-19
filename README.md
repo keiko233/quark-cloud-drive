@@ -9,9 +9,11 @@ standalone projects into a single repo:
   `/restart`), window control (`/minimize`, `/restore`), status, and a two-stage
   idle/monitor CDP proxy (9223 → 9222).
 
-- **`quark-cdp-client/`** — a Deno service that connects to the browser over CDP
+- **`quark-cdp-client/`** — a Deno service that attaches to the browser over CDP
   (the one running inside `quark-docker`) and exposes a small HTTP API for Quark
-  Cloud Drive. It calls the manager's `/start` before each business request and
+  Cloud Drive. Business endpoints are Quark JSON API calls evaluated inside the
+  logged-in renderer (no DOM automation); CDP is only the transport into that
+  renderer. It calls the manager's `/start` before each business request and
   re-exposes `/manager/*` passthrough routes.
 
 The top-level `docker-compose.yaml` orchestrates both services together on a
@@ -124,32 +126,61 @@ Full list in `.env.example`. Key groups (defaults baked into each app's
   `/minimize`, `/restore`, and `/events` (SSE of process state + CDP activity).
 - **Client** (`http://localhost:3000`) — OpenAPI docs at `/`, spec at
   `/spec.json`. Runtime endpoints are `GET/PATCH /config` and `GET /status`.
-  `/status` reports process state, login renderer state, download count, queue
+  `/status` reports process state, login state, active cloud-task count, queue
   pressure, a 0–100 readiness score, monitor timing/decision, and guard state.
   Business endpoints: `/version`, `/queue-status`, `/events`, `/login-qrcode`,
-  `/login-status`, `/user-info`, `/list-file`, `/download-file`,
-  `/download-status`, `/import-share-link`. The manager surface is re-exposed
-  under `/manager/*` (forwarded to the server contract).
+  `/login-status`, `/user-info`, `/list-file`, `/file-info`, `/download-file`,
+  `/download-task`, `/task-list`, `/import-share-link`. The manager surface is
+  re-exposed under `/manager/*` (forwarded to the server contract).
+- **Business endpoints never drive the Quark UI.** Each one is a direct call to
+  Quark's cloud-drive JSON API issued as a same-origin `fetch` inside the
+  logged-in renderer, so the session cookie is applied by the browser and never
+  leaves it. No endpoint queries a DOM node, clicks a row, scrolls a virtual
+  list, or opens the transport tab. `/login-qrcode` is the single exception: the
+  QR code is rendered client-side and has no JSON API.
+- Every business endpoint accepts `raw=true` (`raw: true` in POST bodies) to
+  include the untouched upstream fields under a `raw` object; normalized fields
+  stay stable when Quark changes its payload. The QR code endpoint remains a
+  binary PNG and does not use this wrapper.
+- Locators are always Quark `fid`s (`fid=0` is the drive root). There are no
+  path strings and no UI-order assumptions: `/list-file?fid=`,
+  `/file-info?fid=`, `/download-file?fid=`.
+- `/list-file` reads `/file/sort`; `/file-info` reads `/file/info`; `/task-list`
+  reads `/task/current/list` + `/task/count` and `POST /task-list` applies
+  `resume`/`delete` through `/task/status`.
+- `/download-file` resolves signed URLs (short-lived — treat them as secrets). A
+  file is one `/file/download` call. Quark has no folder archive, so a folder is
+  scanned through `/download/list` and returns its flattened file list, each
+  file with its own URL; `limit` bounds how many URLs are resolved.
+- `POST /download-file` (same path, different verb) is the one endpoint with a
+  disk side effect: it hands `fid` to the app's own downloader, which writes
+  into the app's Downloads folder (or the `toDir` you pass) and keeps a
+  resumable `.qkdownloading` partial until it finishes. Nothing is clicked; the
+  store action is called directly. Signed URLs alone are not enough here,
+  because plain HTTP clients are rejected by Quark's CDN (`412`) while the app's
+  own network stack is accepted.
+- `/download-task` is the local queue behind that endpoint: `GET` reports each
+  transfer's `status` (`-1 error` … `6 finish`), progress, speed and
+  destination, and `POST` applies `pause` / `resume` / `cancel` to a list of
+  `taskIds`. `cancel` also deletes the leftover `.qkdownloading` partials and
+  returns their paths. This is the app's engine, distinct from the cloud
+  `/task-list`.
 - **MCP** — `/mcp` exposes the client contract (including `manager_*`) as MCP
   tools over Streamable HTTP.
 - **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`.
 - **DevTools** — `/devtools` target picker; `/devtools/ws/*` bridges the
   DevTools frontend WebSocket to the CDP proxy; `/devtools/http/*` proxies the
   browser-hosted frontend assets.
-- `download_status` intentionally opens Quark's transport tab to read its task
-  list. `download_file` also performs this check for de-duplication, then
-  restores the Home file-list tab and requested directory before locating the
-  file row.
 - **History** — `/history` returns recent task/download records from Deno KV
   (ops convenience, not part of the contract).
 
 ### Runtime policy
 
 The monitor performs a cheap process probe and login-renderer probe at
-`checkIntervalMs`. It does not open the transport UI on every tick; the
-running-task count is refreshed at `downloadProbeIntervalMs` and cached in the
-status snapshot. The default download probe interval is 5 minutes and the
-default total idle stop threshold is 15 minutes. `minimizeAfterMs` and
+`checkIntervalMs`. It never opens the transport UI; the active cloud-task count
+(todo + running) is refreshed through the task API at `taskProbeIntervalMs` and
+cached in the status snapshot. The default task probe interval is 5 minutes and
+the default total idle stop threshold is 15 minutes. `minimizeAfterMs` and
 `stopAfterMs` retain the two-stage idle policy (`0` disables a stage).
 `stopWhenLoggedOut` optionally stops Quark as soon as
 `renderer/login-window.html` is present. Protected business operations are
@@ -163,7 +194,7 @@ deno task check    # fmt + lint + typecheck
 deno task test     # unit + contract + mcp tests (Deno KV)
 ```
 
-The `list-file` CDP integration test requires a real Quark page and an active
+The `list-file` API integration test requires a real Quark page and an active
 login, so it is skipped by default and does not run in CI's `deno task test`.
 After starting the Docker server and host-side client locally, run it
 explicitly:
@@ -172,11 +203,15 @@ explicitly:
 deno task test:e2e:client
 ```
 
-The test only reads the Home list and verifies that returning from Transport to
-Home emits live SSE events for the current page, the Home click, and
-virtual-list collection. CI can keep using the default unit tests without a
-Quark/Wine login; if CI later provides a login session, set `QUARK_E2E=1`,
-`CLIENT_URL`, and `CDP_URL` to run the same test.
+The test verifies plain JSON responses for the root and a direct `fid` lookup,
+`file-info`, the cloud `task-list`, that the old `path` query now returns HTTP
+400, and that the visible page route does not change. A second opt-in test
+(`download.e2e.test.ts`) downloads the smallest file in the account, waits for
+the task to report `finish`, checks the artifact in the app's Downloads folder
+(host mount `<repo>/downloads`, override with `QUARK_DOWNLOADS_HOST_DIR`), then
+cancels the task and removes the file. CI can keep using the default unit tests
+without a Quark/Wine login; if CI later provides a login session, set
+`QUARK_E2E=1`, `CLIENT_URL`, and `CDP_URL` to run the same tests.
 
 ## CI
 

@@ -28,12 +28,12 @@ Deno.test("TtlCache has() respects expiry", async () => {
 
 Deno.test("TtlCache invalidateWhere deletes matching entries only", () => {
   const cache = new TtlCache<string, number>(10_000);
-  cache.set("downloadStatus:running", 1);
-  cache.set("downloadStatus:all", 2);
+  cache.set("taskList:running", 1);
+  cache.set("taskList:all", 2);
   cache.set("fileList:", 3);
-  cache.invalidateWhere((k) => k.startsWith("downloadStatus:"));
-  assertEquals(cache.get("downloadStatus:running"), undefined);
-  assertEquals(cache.get("downloadStatus:all"), undefined);
+  cache.invalidateWhere((k) => k.startsWith("taskList:"));
+  assertEquals(cache.get("taskList:running"), undefined);
+  assertEquals(cache.get("taskList:all"), undefined);
   assertEquals(cache.get("fileList:"), 3);
 });
 

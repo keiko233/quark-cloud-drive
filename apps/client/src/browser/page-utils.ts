@@ -229,7 +229,7 @@ export async function readNamesSnapshot(
         if (!el) return "";
         const cloned = el.cloneNode(true) as Element;
         cloned
-          .querySelectorAll(".all-file-list-mode-tips")
+          .querySelectorAll(".all-file-list-mode-tips, .common-tips-wrap")
           .forEach((t) => t.remove());
         return (cloned.textContent ?? "").replace(/\s+/g, " ").trim();
       };

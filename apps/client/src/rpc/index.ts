@@ -12,11 +12,6 @@ import { handleMcpRequest } from "./mcp.ts";
 import { vncApp } from "./vnc.ts";
 import { devtoolsApp } from "./devtools.ts";
 import { kvStore } from "../store/kv.ts";
-import {
-  consumeEventIteratorSSE,
-  isEventStreamResponse,
-  wantsEventStream,
-} from "./stream.ts";
 
 const handler = new OpenAPIHandler(clientRouter, {
   plugins: [
@@ -27,11 +22,13 @@ const handler = new OpenAPIHandler(clientRouter, {
           title: "Quark Remote Client API",
           version: "1.0.0",
           description: [
-            "Programmatic interface to a headless Quark Cloud Drive client",
-            "driven over CDP via Playwright. Long operations (list_file,",
-            "download_file, import_share_link) stream SSE progress when the",
-            "client sends `Accept: text/event-stream`; otherwise they return",
-            "the final result as plain JSON. Short queries return plain JSON.",
+            "Programmatic interface to a headless Quark Cloud Drive client.",
+            "Every business endpoint is a direct call to Quark's cloud-drive",
+            "JSON API, issued from the logged-in renderer; no endpoint drives",
+            "the Quark UI, so business responses are plain JSON (no SSE",
+            "progress streams). Locators are Quark `fid`s. Add `raw=true` to",
+            "any business endpoint to include the untouched upstream fields",
+            "under a `raw` object.",
           ].join("\n"),
         },
       },
@@ -69,24 +66,8 @@ app.use("/*", async (c, next) => {
     context: {},
   });
   if (matched) {
-    // Long operations stream SSE progress, but plain clients (curl, agents,
-    // `Accept: application/json`) want one JSON answer. Negotiate: only send
-    // the stream when the client explicitly asks for text/event-stream;
-    // otherwise consume it and return the final result as JSON.
-    if (
-      isEventStreamResponse(response) &&
-      !wantsEventStream(c.req.header("Accept") ?? "")
-    ) {
-      try {
-        const value = await consumeEventIteratorSSE(response.body);
-        return c.json(value ?? null);
-      } catch (error) {
-        return c.json(
-          { error: error instanceof Error ? error.message : String(error) },
-          500,
-        );
-      }
-    }
+    // Every business procedure answers with plain JSON. The only streams left
+    // are the `/events` and `/manager/events` SSE buses, which pass through.
     return c.newResponse(response.body, response);
   }
   await next();

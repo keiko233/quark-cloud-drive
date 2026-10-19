@@ -18,7 +18,7 @@ const CONFIG_KEY = "runtime.config";
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   enabled: true,
   checkIntervalMs: IDLE_CHECK_INTERVAL_MS,
-  downloadProbeIntervalMs: 5 * 60_000,
+  taskProbeIntervalMs: 5 * 60_000,
   activityWindowMs: 30_000,
   minimizeAfterMs: IDLE_MINIMIZE_AFTER_MS,
   stopAfterMs: IDLE_STOP_AFTER_MS,
@@ -27,17 +27,40 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   requireLoginFor: [
     "userInfo",
     "listFile",
-    "downloadStatus",
+    "fileInfo",
     "downloadFile",
-    "updateDownloadStatus",
+    "startDownload",
+    "downloadTask",
+    "listTask",
+    "updateTask",
     "importShareLink",
   ],
 };
 
+/**
+ * Merge a stored config with the current defaults.
+ *
+ * `requireLoginFor` grows as operations are added, and a persisted config
+ * would otherwise pin the older, shorter list — leaving newly added mutating
+ * operations unguarded. Unioning keeps the safe default without discarding a
+ * user's own additions, and is logged so the change is visible.
+ */
+export function withCurrentGuardDefaults(config: RuntimeConfig): RuntimeConfig {
+  const missing = DEFAULT_RUNTIME_CONFIG.requireLoginFor.filter(
+    (operation) => !config.requireLoginFor.includes(operation),
+  );
+  if (missing.length === 0) return config;
+  log.info(`runtime config: added default login guards ${missing.join(", ")}`);
+  return {
+    ...config,
+    requireLoginFor: [...config.requireLoginFor, ...missing],
+  };
+}
+
 export async function getRuntimeConfig(): Promise<RuntimeConfig> {
   const stored = await kvStore.getSetting<unknown>(CONFIG_KEY);
   const parsed = RuntimeConfigSchema.safeParse(stored);
-  if (parsed.success) return parsed.data;
+  if (parsed.success) return withCurrentGuardDefaults(parsed.data);
 
   await kvStore.setSetting(CONFIG_KEY, DEFAULT_RUNTIME_CONFIG);
   if (stored !== null) {

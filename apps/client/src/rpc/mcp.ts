@@ -23,21 +23,30 @@ const SERVER_VERSION = "1.0.0";
 const SERVER_INSTRUCTIONS = [
   "# Quark Remote Client — MCP usage",
   "",
-  "Drives a headless Quark Cloud Drive client over CDP. All tools serialise",
-  "behind a single browser-operation slot (concurrency 1) because they share",
-  "one window.",
+  "Drives a headless Quark Cloud Drive client. Every business tool is a direct",
+  "call to Quark's cloud-drive JSON API issued from the logged-in renderer; no",
+  "tool drives the Quark UI. Mutating tools still serialise behind a single",
+  "browser-operation slot (concurrency 1) because they share one window.",
   "",
   "## Common pitfalls",
   "",
-  "- **Streaming tools return the final value**: `list_file`, `download_file`",
-  "  and `import_share_link` run as long operations. The tool call blocks until",
-  "  they finish and returns the result (e.g. `{path, items}`), not progress",
-  "  events.",
+  "- **Locators are `fid`s**: `list_file`, `file_info` and `download_file` take",
+  "  a Quark `fid`. The drive root is `fid=0`; listings return each item's fid.",
+  "- **Raw passthrough**: business tools accept `raw=true`; the untouched",
+  "  upstream fields are returned under the result's `raw` object.",
   "- **First call after idle is slow**: the host may have minimized/stopped",
   "  Quark; the first request wakes it (a few seconds of cold-start).",
-  "- **Concurrency is 1**: tools are served serially, not in parallel.",
+  "- **Concurrency is 1**: mutating tools are served serially, not in parallel.",
   "- **Writes require login**: downloads, share imports, and capacity reads",
   "  need an authenticated session. Guard with `login_status`.",
+  "- **Two downloads**: `download_file` returns a signed URL and never writes",
+  "  to disk (the URL expires, so fetch it promptly). `start_download` really",
+  "  downloads: it queues the `fid` on the app's own downloader, which writes",
+  "  into the app's Downloads folder (`toDir` overrides it). Track it with",
+  "  `download_task_list` and stop it with `update_download_task`",
+  "  (`pause`/`resume`/`cancel`; `cancel` also deletes the partial file).",
+  "- **Folder downloads are unbounded**: `start_download` on a folder pulls the",
+  "  whole subtree, so check the size first.",
 ].join("\n");
 
 interface McpToolMeta {
@@ -139,7 +148,7 @@ function registerRouterTools(mcp: McpServer, router: AnyRouter): number {
               }
               // Streaming procedures return an async generator. MCP tools have
               // no stream representation, so consume it and return the final
-              // value (e.g. `{path, items}` for list_file) instead of a
+              // value (e.g. `{fid, name}` for download_file) instead of a
               // JSON.stringify'd `{}` of the generator object.
               const finalValue = isAsyncIterable(result)
                 ? await consumeAsyncIterableFinal(result)

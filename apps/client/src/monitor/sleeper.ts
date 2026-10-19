@@ -1,5 +1,5 @@
 // Adaptive idle monitor. Cheap process/login checks run at the configured
-// interval; the expensive transport-panel check has its own slower cadence.
+// interval; the cloud task probe (an API read) has its own slower cadence.
 
 import type {
   LoginState,
@@ -20,7 +20,7 @@ export interface IdleConfig {
   stopAfterMs: number;
   checkIntervalMs: number;
   activityWindowMs: number;
-  downloadProbeIntervalMs?: number;
+  taskProbeIntervalMs?: number;
   enabled?: boolean;
   stopWhenLoggedOut?: boolean;
   stopWhenUnhealthy?: boolean;
@@ -82,9 +82,9 @@ export class Sleeper {
   private idleStart: number | null = null;
   private running = false;
   private latest: RuntimeStatus | null = null;
-  private lastDownloadProbeAt: number | null = null;
-  private runningDownloads: number | null = null;
-  private downloadsCheckedAt: number | null = null;
+  private lastTaskProbeAt: number | null = null;
+  private runningTasks: number | null = null;
+  private tasksCheckedAt: number | null = null;
   private lastDecision: string | null = null;
   private lastReason: string | null = null;
   private lastError: string | null = null;
@@ -103,8 +103,7 @@ export class Sleeper {
     return {
       enabled: this.fixedConfig.enabled ?? true,
       checkIntervalMs: this.fixedConfig.checkIntervalMs,
-      downloadProbeIntervalMs: this.fixedConfig.downloadProbeIntervalMs ??
-        5 * 60_000,
+      taskProbeIntervalMs: this.fixedConfig.taskProbeIntervalMs ?? 5 * 60_000,
       activityWindowMs: this.fixedConfig.activityWindowMs,
       minimizeAfterMs: this.fixedConfig.minimizeAfterMs,
       stopAfterMs: this.fixedConfig.stopAfterMs,
@@ -113,9 +112,10 @@ export class Sleeper {
       requireLoginFor: [
         "userInfo",
         "listFile",
-        "downloadStatus",
+        "fileInfo",
         "downloadFile",
-        "updateDownloadStatus",
+        "listTask",
+        "updateTask",
         "importShareLink",
       ],
     };
@@ -152,28 +152,37 @@ export class Sleeper {
     if (
       login === "logged_in" && process.state !== "stopped" &&
       process.state !== "starting" &&
-      (this.lastDownloadProbeAt === null ||
-        now - this.lastDownloadProbeAt >= config.downloadProbeIntervalMs)
+      (this.lastTaskProbeAt === null ||
+        now - this.lastTaskProbeAt >= config.taskProbeIntervalMs)
     ) {
-      this.lastDownloadProbeAt = now;
+      this.lastTaskProbeAt = now;
       try {
-        const { readRunningDownloadCountRaw } = await import(
-          "../actions/download-status.ts"
-        );
+        // Read active cloud tasks (todo + running) from the task API. This is
+        // a plain JSON read: no transport tab, no DOM, no local downloader.
         const count = await getOperationQueue().run(
-          "downloadStatusProbe",
-          { key: "monitor:downloadStatus", priority: 10 },
-          async () => await readRunningDownloadCountRaw(),
+          "taskListProbe",
+          { key: "monitor:taskList", priority: 10 },
+          async () => {
+            const { getQuarkPage } = await import(
+              "../actions/browser-session.ts"
+            );
+            const { fetchQuarkTaskCountsInBrowser } = await import(
+              "../actions/task-api.ts"
+            );
+            const page = await getQuarkPage();
+            const { counts } = await fetchQuarkTaskCountsInBrowser(page);
+            return counts.todo + counts.running;
+          },
         );
-        this.runningDownloads = count;
-        this.downloadsCheckedAt = Date.now();
+        this.runningTasks = count;
+        this.tasksCheckedAt = Date.now();
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);
       }
     }
 
     const busy = process.state === "starting" || cdpActive ||
-      (this.runningDownloads !== null && this.runningDownloads > 0);
+      (this.runningTasks !== null && this.runningTasks > 0);
     if (busy) this.idleStart = now;
     else if (this.idleStart === null) this.idleStart = now;
     const idleForMs = busy ? 0 : now - this.idleStart;
@@ -225,8 +234,8 @@ export class Sleeper {
     const status = makeRuntimeStatus({
       process: probe.process,
       login: probe.login,
-      runningDownloads: this.runningDownloads,
-      downloadsCheckedAt: this.downloadsCheckedAt,
+      runningTasks: this.runningTasks,
+      tasksCheckedAt: this.tasksCheckedAt,
       queue: getOperationQueue().status(),
       idleForMs: probe.idleForMs,
       config,

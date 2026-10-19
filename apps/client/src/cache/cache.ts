@@ -1,6 +1,6 @@
 // TTL cache with prefix-based invalidation. Write operations invalidate the
-// read caches they could have made stale (e.g. `setDownloadStatus` clears the
-// download-status cache) instead of waiting for the TTL to expire.
+// read caches they could have made stale (e.g. saving a share clears the
+// account-capacity cache) instead of waiting for the TTL to expire.
 
 interface CacheEntry<V> {
   value: V;
@@ -40,7 +40,7 @@ export class TtlCache<K, V> {
 
   /**
    * Delete every entry whose key satisfies `predicate`. Used to invalidate
-   * read caches from write operations (e.g. all `downloadStatus:` entries).
+   * read caches from write operations (e.g. all entries for one account).
    */
   invalidateWhere(predicate: (key: K) => boolean): void {
     for (const key of this.store.keys()) {

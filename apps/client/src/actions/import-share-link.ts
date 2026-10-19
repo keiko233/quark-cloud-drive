@@ -1,103 +1,133 @@
-import type {
-  ImportShareLinkStreamEvent,
-  QuarkImportShareLinkResult,
-} from "@quark/contract/schemas";
+import type { QuarkImportShareLinkResult } from "@quark/contract/schemas";
 import { log } from "../logger.ts";
-import { getOperationQueue } from "../browser/context.ts";
-import { getHomePage } from "../browser/page-utils.ts";
+import { userInfoCache } from "../cache/caches.ts";
+import { getQuarkPage } from "./browser-session.ts";
+import { listQuarkFolderInBrowser } from "./file-list-api.ts";
+import { QuarkApiError } from "./renderer-http.ts";
+import {
+  fetchQuarkShareDetailInBrowser,
+  fetchQuarkShareSaveDirInBrowser,
+  fetchQuarkShareTokenInBrowser,
+  parseQuarkShareUrl,
+  pollQuarkTaskInBrowser,
+  QUARK_TASK_STATUS_FAIL,
+  QUARK_TASK_STATUS_FINISH,
+  saveQuarkShareInBrowser,
+} from "./share-api.ts";
 
-export const SEARCH_TRIGGER_SELECTOR =
-  "#root > div > section > section > header > div > div.main-content > div > div > div";
-export const SEARCH_INPUT_SELECTOR = "#search-input";
-
-// Quark opens share links as new pages at this origin
-const QUARK_SHARE_ORIGIN = "https://pan.quark.cn/s/";
-// The share URL is loaded inside this Electron window shell page
-const WINDOW_EXPLORER_WEBVIEW_URL = "window-explorer-webview.html";
+export interface ImportShareLinkOptions {
+  /** Overrides a passcode embedded in the URL (`?pwd=...`). */
+  passcode?: string;
+  /** Destination folder id; defaults to Quark's `来自：分享`. */
+  toFid?: string;
+  raw?: boolean;
+}
 
 /**
- * Queued streaming entry point. Yields `opening`/`saving` progress, then
- * returns `{url, savedPath}`.
+ * Best-effort mapping of the saved share entries to the fids Quark created in
+ * the destination folder. Quark's save API only echoes a task id, so the
+ * destination is listed once and matched by name.
  */
-export function importShareLink(
-  url: string,
-): Promise<
-  AsyncGenerator<ImportShareLinkStreamEvent, QuarkImportShareLinkResult>
-> {
-  return getOperationQueue().runStreaming(
-    "importShareLink",
-    { key: `importShareLink:${url}`, priority: 1 },
-    async function* () {
-      log.debug(`importShareLink: url="${url}"`);
-      yield { type: "opening", url };
-
-      const homePage = getHomePage();
-      await homePage.bringToFront();
-      await homePage.waitForLoadState("domcontentloaded");
-
-      const trigger = homePage.locator(SEARCH_TRIGGER_SELECTOR).first();
-      const input = homePage.locator(SEARCH_INPUT_SELECTOR).first();
-
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await trigger.evaluate((el) => (el as HTMLElement).click());
-        const appeared = await input
-          .waitFor({ state: "visible", timeout: 4_000 })
-          .then(() => true)
-          .catch(() => false);
-        if (appeared) break;
-        await homePage.waitForTimeout(800);
+async function matchSavedFids(
+  page: Awaited<ReturnType<typeof getQuarkPage>>,
+  toFid: string,
+  names: string[],
+): Promise<string[]> {
+  if (names.length === 0) return [];
+  try {
+    const listing = await listQuarkFolderInBrowser(page, toFid);
+    const wanted = new Set(names);
+    const fids: string[] = [];
+    for (const item of listing.items) {
+      if (wanted.has(item.name) && !fids.includes(item.fid)) {
+        fids.push(item.fid);
       }
-      await input.waitFor({ state: "visible", timeout: 5_000 });
+    }
+    return fids;
+  } catch (error) {
+    log.warn(
+      `importShareLink: could not map saved fids (${
+        error instanceof Error ? error.message : String(error)
+      })`,
+    );
+    return [];
+  }
+}
 
-      await input.fill(url);
+/**
+ * Save a `https://pan.quark.cn/s/...` share into the drive using Quark's share
+ * API: token -> detail -> save -> task poll. The share page is never opened.
+ */
+export async function importShareLink(
+  url: string,
+  options: ImportShareLinkOptions = {},
+): Promise<QuarkImportShareLinkResult> {
+  const identity = parseQuarkShareUrl(url);
+  const passcode = options.passcode?.trim() || identity.passcode || "";
+  const includeRaw = options.raw === true;
 
-      await homePage.waitForTimeout(1_500);
+  const page = await getQuarkPage();
+  const token = await fetchQuarkShareTokenInBrowser(page, {
+    pwdId: identity.pwdId,
+    passcode: passcode === "" ? null : passcode,
+  });
 
-      const context = homePage.context();
-
-      const knownPages = new Set(context.pages());
-
-      const sharePagePromise = context.waitForEvent("page", {
-        predicate: (page) => page.url().startsWith(QUARK_SHARE_ORIGIN),
-        timeout: 15_000,
-      });
-
-      await input.press("Enter");
-
-      const sharePage = await sharePagePromise;
-      await sharePage.waitForLoadState("domcontentloaded");
-      log.debug(`importShareLink: share page opened at "${sharePage.url()}"`);
-
-      yield { type: "saving", url };
-
-      const saveBtn = sharePage.locator("button.ant-btn.share-save").first();
-      await saveBtn.waitFor({ state: "visible", timeout: 15_000 });
-      await saveBtn.evaluate((el) => (el as HTMLElement).click());
-
-      const successModal = sharePage
-        .locator(".save-share-file-success-modal")
-        .first();
-      await successModal.waitFor({ state: "visible", timeout: 10_000 });
-
-      const savedPath = await successModal
-        .locator(".save-path-wrap .path")
-        .first()
-        .textContent()
-        .then((t) => (t ?? "").trim())
-        .catch(() => "");
-
-      log.debug(
-        `importShareLink: saved to "${savedPath}", closing share window`,
-      );
-
-      const windowShell = context.pages().find(
-        (p) =>
-          !knownPages.has(p) && p.url().includes(WINDOW_EXPLORER_WEBVIEW_URL),
-      );
-      const pageToClose = windowShell ?? sharePage;
-      await pageToClose.evaluate(() => self.close()).catch(() => undefined);
-
-      return { url, savedPath };
-    },
+  const detail = await fetchQuarkShareDetailInBrowser(
+    page,
+    identity.pwdId,
+    token.stoken,
   );
+  if (detail.entries.length === 0) {
+    throw new QuarkApiError("share contained no entries to save");
+  }
+
+  const toDirFid = options.toFid?.trim() ||
+    (await fetchQuarkShareSaveDirInBrowser(page)).fid;
+
+  const save = await saveQuarkShareInBrowser(page, {
+    pwdId: identity.pwdId,
+    stoken: token.stoken,
+    toDirFid,
+    entries: detail.entries,
+  });
+
+  const task = save.taskId === ""
+    ? null
+    : await pollQuarkTaskInBrowser(page, save.taskId);
+  if (task !== null && task.status === QUARK_TASK_STATUS_FAIL) {
+    throw new QuarkApiError("Quark failed to save the share");
+  }
+
+  const savedFids = await matchSavedFids(
+    page,
+    toDirFid,
+    detail.entries.map((entry) => entry.name),
+  );
+  // A save changes used capacity.
+  userInfoCache.delete("s");
+
+  log.debug(
+    `importShareLink: saved ${detail.entries.length} entr(ies) into fid=${toDirFid}`,
+  );
+
+  return {
+    url,
+    pwdId: identity.pwdId,
+    toDirFid,
+    savedFids,
+    taskId: save.taskId === "" ? null : save.taskId,
+    taskStatus: task === null
+      ? null
+      : (task.status === QUARK_TASK_STATUS_FINISH ? "finish" : "fail"),
+    ...(includeRaw
+      ? {
+        raw: {
+          token: token.raw,
+          detail: detail.pages,
+          save: save.raw,
+          ...(task !== null ? { task: task.raw } : {}),
+        },
+      }
+      : {}),
+  };
 }

@@ -13,6 +13,6 @@
     "test": "deno test -A --unstable-kv apps packages",
     "dev:client": "deno task --cwd apps/client dev",
     "dev:server": "deno task --cwd apps/server dev",
-    "test:e2e:client": "QUARK_E2E=1 deno test -A --unstable-kv apps/client/src/actions/list-file.e2e.test.ts"
+    "test:e2e:client": "QUARK_E2E=1 deno test -A --unstable-kv apps/client/src/actions/list-file.e2e.test.ts apps/client/src/actions/download.e2e.test.ts"
   }
 }

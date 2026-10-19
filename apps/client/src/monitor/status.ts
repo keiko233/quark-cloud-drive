@@ -12,8 +12,8 @@ const STATUS_KEY = "runtime.status";
 export interface RuntimeStatusInput {
   process: ServerStatus;
   login: LoginState;
-  runningDownloads: number | null;
-  downloadsCheckedAt: number | null;
+  runningTasks: number | null;
+  tasksCheckedAt: number | null;
   queue: RuntimeStatus["queue"];
   idleForMs: number;
   config: RuntimeConfig;
@@ -59,9 +59,9 @@ export function makeRuntimeStatus(input: RuntimeStatusInput): RuntimeStatus {
     generatedAt: Date.now(),
     process: input.process,
     login: input.login,
-    downloads: {
-      running: input.runningDownloads,
-      checkedAt: input.downloadsCheckedAt,
+    tasks: {
+      running: input.runningTasks,
+      checkedAt: input.tasksCheckedAt,
     },
     queue: input.queue,
     health,

@@ -1,4 +1,5 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertThrows } from "@jsr/std__assert";
+import { test } from "bun:test";
 import { clientContract } from "./client.ts";
 import { serverContract } from "./server.ts";
 import {
@@ -41,7 +42,7 @@ function route(contract: unknown, key: string): Record<string, unknown> {
   return out;
 }
 
-Deno.test("serverContract exposes the full thin-manager surface", () => {
+test("serverContract exposes the full thin-manager surface", () => {
   const keys = [
     "healthz",
     "status",
@@ -71,7 +72,7 @@ Deno.test("serverContract exposes the full thin-manager surface", () => {
   });
 });
 
-Deno.test("serverContract events is an event iterator", () => {
+test("serverContract events is an event iterator", () => {
   const out = proc(serverContract, "events")["~orpc"].outputSchema as {
     getEventIteratorSchemaDetails?: unknown;
   };
@@ -81,7 +82,7 @@ Deno.test("serverContract events is an event iterator", () => {
   assertEquals(typeof out, "object");
 });
 
-Deno.test("clientContract exposes the full business surface", () => {
+test("clientContract exposes the full business surface", () => {
   const keys = [
     "config",
     "updateConfig",
@@ -153,7 +154,7 @@ Deno.test("clientContract exposes the full business surface", () => {
 
 // The nested manager router mirrors the server contract under /manager/* with
 // MCP opt-in on every control procedure (events stays an SSE stream, no tool).
-Deno.test("clientContract manager router mirrors the manager surface", () => {
+test("clientContract manager router mirrors the manager surface", () => {
   const manager = (clientContract as Record<string, unknown>).manager as Record<
     string,
     unknown
@@ -197,7 +198,7 @@ Deno.test("clientContract manager router mirrors the manager surface", () => {
   assertEquals(eventsMeta?.mcp?.tool, undefined);
 });
 
-Deno.test("client write operations carry detailed inputStructure", () => {
+test("client write operations carry detailed inputStructure", () => {
   for (
     const key of [
       "downloadFile",
@@ -215,7 +216,7 @@ Deno.test("client write operations carry detailed inputStructure", () => {
   }
 });
 
-Deno.test("listFile is a plain JSON file API lookup", () => {
+test("listFile is a plain JSON file API lookup", () => {
   const definition = proc(clientContract, "listFile")["~orpc"];
   const output = definition.outputSchema as {
     getEventIteratorSchemaDetails?: unknown;
@@ -239,7 +240,7 @@ Deno.test("listFile is a plain JSON file API lookup", () => {
   );
 });
 
-Deno.test("downloadFile is fid-based and returns plain JSON", () => {
+test("downloadFile is fid-based and returns plain JSON", () => {
   const definition = proc(clientContract, "downloadFile")["~orpc"];
   const input = definition.inputSchema as {
     safeParse(value: unknown): { success: boolean };
@@ -307,7 +308,7 @@ Deno.test("downloadFile is fid-based and returns plain JSON", () => {
   assertEquals(folder.truncated, true);
 });
 
-Deno.test("fileInfo, taskList and updateTask schemas round-trip", () => {
+test("fileInfo, taskList and updateTask schemas round-trip", () => {
   assertEquals(
     QuarkFileInfoSchema.parse({
       fid: "file-fid",
@@ -361,7 +362,7 @@ Deno.test("fileInfo, taskList and updateTask schemas round-trip", () => {
   );
 });
 
-Deno.test("importShareLink result is fid-based", () => {
+test("importShareLink result is fid-based", () => {
   assertEquals(
     QuarkImportShareLinkResultSchema.parse({
       url: "https://pan.quark.cn/s/abc",
@@ -375,7 +376,7 @@ Deno.test("importShareLink result is fid-based", () => {
   );
 });
 
-Deno.test("importShareLink input accepts a share URL or bare id, rejects junk", () => {
+test("importShareLink input accepts a share URL or bare id, rejects junk", () => {
   assertEquals(
     QuarkShareUrlSchema.parse("https://pan.quark.cn/s/abc"),
     "https://pan.quark.cn/s/abc",
@@ -386,7 +387,7 @@ Deno.test("importShareLink input accepts a share URL or bare id, rejects junk", 
   }
 });
 
-Deno.test("local download schemas round-trip", () => {
+test("local download schemas round-trip", () => {
   assertEquals(
     QuarkDownloadStartResultSchema.parse({
       fid: "file-fid",
@@ -430,7 +431,7 @@ Deno.test("local download schemas round-trip", () => {
   );
 });
 
-Deno.test("ServerStatusSchema round-trips", () => {
+test("ServerStatusSchema round-trips", () => {
   const value = ServerStatusSchema.parse({
     state: "running_visible",
     pid: 1234,
@@ -443,7 +444,7 @@ Deno.test("ServerStatusSchema round-trips", () => {
   assertEquals(value.counts.start, 1);
 });
 
-Deno.test("ServerStatusSchema rejects unknown states", () => {
+test("ServerStatusSchema rejects unknown states", () => {
   let threw = false;
   try {
     ServerStatusSchema.parse({
@@ -457,7 +458,7 @@ Deno.test("ServerStatusSchema rejects unknown states", () => {
   if (!threw) throw new Error("expected parse to fail for unknown state");
 });
 
-Deno.test("QuarkFileListSchema round-trips", () => {
+test("QuarkFileListSchema round-trips", () => {
   const value = QuarkFileListSchema.parse({
     fid: "folder-fid",
     items: [{
@@ -489,7 +490,7 @@ Deno.test("QuarkFileListSchema round-trips", () => {
   );
 });
 
-Deno.test("account schemas accept structured fields and raw data", () => {
+test("account schemas accept structured fields and raw data", () => {
   assertEquals(
     QuarkUserInfoSchema.parse({
       capacity: "4.3T/6T",
@@ -508,7 +509,7 @@ Deno.test("account schemas accept structured fields and raw data", () => {
   );
 });
 
-Deno.test("raw option accepts boolean and query-string forms", () => {
+test("raw option accepts boolean and query-string forms", () => {
   assertEquals(RawOptionSchema.parse(true), true);
   assertEquals(RawOptionSchema.parse(false), false);
   assertEquals(RawOptionSchema.parse("true"), true);

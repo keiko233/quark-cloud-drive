@@ -1,4 +1,4 @@
-import { Logger } from "@libs/logger";
+import { Logger } from "@jsr/libs__logger";
 import { LOG_LEVEL } from "./env.ts";
 
 /** Shared logger; every package logs through this singleton. */

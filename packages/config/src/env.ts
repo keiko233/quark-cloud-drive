@@ -1,13 +1,15 @@
 // @quark/config — the single source of truth for runtime configuration.
 //
 // Every deployment knob the app reads is declared here, so there is exactly
-// one place to look. Process env wins; a local `.env` fills the gaps. Nothing
-// in this module reads, copies, logs, or persists credentials.
+// one place to look. Process env wins; a local `.env` fills the gaps -- the
+// runtime loads it into `process.env` before this module is evaluated, so
+// there is no dotenv layer of our own. Nothing in this module reads, copies,
+// logs, or persists credentials.
 
-import { load } from "@std/dotenv";
-import type { levellike } from "@libs/logger";
+import { statSync } from "node:fs";
+import type { levellike } from "@jsr/libs__logger";
 
-const env = { ...(await load({ export: false })), ...Deno.env.toObject() };
+const env = process.env;
 
 function envInt(name: string, def: number): number {
   const v = env[name];
@@ -89,7 +91,7 @@ function resolveLaunchScript(): string {
     ]
   ) {
     try {
-      if (Deno.statSync(candidate).isFile) return candidate;
+      if (statSync(candidate).isFile()) return candidate;
     } catch {
       // not present — try the next candidate
     }

@@ -1,0 +1,13 @@
+{
+  "name": "@quark/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@quark/config": "workspace:*",
+    "@quark/drive": "workspace:*",
+    "@quark/manager": "workspace:*",
+    "@quark/service": "workspace:*",
+    "playwright": "^1.62.1"
+  }
+}

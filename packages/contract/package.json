@@ -1,0 +1,19 @@
+{
+  "name": "@quark/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts",
+    "./schemas": "./src/schemas.ts",
+    "./server": "./src/server.ts",
+    "./client": "./src/client.ts"
+  },
+  "dependencies": {
+    "@orpc/contract": "^1.15.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@jsr/std__assert": "^1.0.19"
+  }
+}

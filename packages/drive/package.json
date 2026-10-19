@@ -1,0 +1,18 @@
+{
+  "name": "@quark/drive",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "dependencies": {
+    "@orpc/server": "^1.15.0",
+    "@quark/config": "workspace:*",
+    "@quark/contract": "workspace:*",
+    "playwright": "^1.62.1"
+  },
+  "devDependencies": {
+    "@jsr/std__assert": "^1.0.19"
+  }
+}

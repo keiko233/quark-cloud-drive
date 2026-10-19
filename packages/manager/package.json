@@ -1,0 +1,23 @@
+{
+  "name": "@quark/manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/mod.ts"
+  },
+  "dependencies": {
+    "@orpc/client": "^1.15.0",
+    "@orpc/contract": "^1.15.0",
+    "@orpc/openapi": "^1.15.0",
+    "@orpc/openapi-client": "^1.15.0",
+    "@orpc/server": "^1.15.0",
+    "@orpc/zod": "^1.15.0",
+    "@quark/config": "workspace:*",
+    "@quark/contract": "workspace:*",
+    "hono": "^4.13.5"
+  },
+  "devDependencies": {
+    "@jsr/std__assert": "^1.0.19"
+  }
+}

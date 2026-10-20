@@ -28,9 +28,6 @@ function envBool(name: string, def: boolean): boolean {
 /** Public REST/MCP/VNC port. */
 export const SERVER_PORT = envInt("SERVER_PORT", 3000);
 
-/** Manager (process lifecycle) API port, served by this same process. */
-export const QUARK_API_PORT = envInt("QUARK_API_PORT", 8080);
-
 /**
  * How the service reaches the process manager.
  *
@@ -44,7 +41,7 @@ export const MANAGER_MODE = (env["QUARK_MANAGER_MODE"] ?? "embedded")
 /** Base URL of a remote manager, used when `MANAGER_MODE` is `http`. */
 export const MANAGER_URL = env["QUARK_MANAGER_URL"] ??
   env["SERVER_URL"] ??
-  `http://127.0.0.1:${QUARK_API_PORT}`;
+  `http://127.0.0.1:${SERVER_PORT}/manager`;
 
 // ── Quark renderer transport ────────────────────────────────────────────────
 

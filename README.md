@@ -43,7 +43,7 @@ quark-cloud-drive/
 └── packages/
     ├── contract/src/          # oRPC contracts + zod schemas
     ├── config/src/            # env.ts + logger.ts
-    ├── manager/src/           # process.ts, cdp-proxy.ts, manager-app.ts, client.ts
+    ├── manager/src/           # process.ts, cdp-proxy.ts, events.ts, client.ts
     ├── drive/src/             # actions/, browser/, cache/, queue/, store/
     └── service/src/           # rpc/, session/, monitor/, guard.ts, bootstrap.ts
 ```
@@ -59,7 +59,7 @@ Services:
 
 | Container           | Host mapping                                                             |
 | ------------------- | ------------------------------------------------------------------------ |
-| `quark-cloud-drive` | API + MCP + noVNC `:3000`, Manager `:8080`, CDP `:9223`, raw VNC `:5900` |
+| `quark-cloud-drive` | API + MCP + noVNC `:3000`, CDP `:9223`, raw VNC `:5900` |
 
 Notes:
 
@@ -71,8 +71,8 @@ Notes:
   floating window remains disabled. Other Quark settings are preserved.
 - The KV store (task history + runtime settings, a SQLite file under
   `QUARK_KV_PATH`) survives restarts via the `app-data` volume.
-- `/manager/*` on `:3000` and the manager API on `:8080` are the same process.
-  `:8080` exists for external consumers and for host-side development.
+- Manager routes are mounted under `/manager/*` on the same `:3000` listener;
+  there is no second HTTP port.
 
 ### Local dev
 
@@ -118,9 +118,8 @@ Full list in `.env.example`; every default lives in
 `packages/config/src/env.ts`:
 
 - Common: `DOCKER_CPUS`, `DOCKER_MEMORY`.
-- Manager runtime: `QUARK_RUNTIME` (`spark`), `QUARK_API_PORT` (8080),
-  `QUARK_CDP_PORT` (9222), `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`,
-  `LAUNCH_SCRIPT`, `WINE_*`.
+- Manager runtime: `QUARK_RUNTIME` (`spark`), `QUARK_CDP_PORT` (9222),
+  `CDP_PROXY_PORT` (9223), `QUARK_AUTOSTART`, `LAUNCH_SCRIPT`, `WINE_*`.
 - Wiring: `QUARK_MANAGER_MODE` (`embedded` | `http`), `QUARK_MANAGER_URL`,
   `SERVER_PORT` (3000), `CDP_URL`, `VNC_URL`.
 - Policy/queue: `CLIENT_IDLE_*` (first-run monitor defaults), `QUEUE_*`. After
@@ -130,10 +129,11 @@ Full list in `.env.example`; every default lives in
 
 ## API surfaces
 
-- **Manager** (`http://localhost:8080`, same process) — plain `/healthz`;
-  OpenAPI spec at `/spec.json`; manager routes `/status`, `/start`, `/stop`,
-  `/restart`, `/minimize`, `/restore`, and `/events` (SSE of process state + CDP
-  activity).
+- **Manager** (`http://localhost:3000/manager`, same process) —
+  `/manager/healthz`, `/manager/status`, `/manager/start`, `/manager/stop`,
+  `/manager/restart`, `/manager/minimize`, `/manager/restore`, and
+  `/manager/events` (SSE of process state + CDP activity). These routes are
+  documented in the same `/spec.json`.
 - **App** (`http://localhost:3000`) — OpenAPI docs at `/`, spec at `/spec.json`.
   Runtime endpoints are `GET/PATCH /config` and `GET /status`. `/status` reports
   process state, login state, active cloud-task count, queue pressure, a 0–100

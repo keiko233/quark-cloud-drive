@@ -8,7 +8,6 @@
 import {
   createEmbeddedManager,
   createHttpManager,
-  createManagerApp,
   ProcessManager,
   setManager,
   startCdpProxy,
@@ -18,7 +17,6 @@ import {
   log,
   MANAGER_MODE,
   MANAGER_URL,
-  QUARK_API_PORT,
   QUARK_AUTOSTART,
   RECONNECT_INTERVAL_MS,
 } from "@quark/config";
@@ -53,11 +51,7 @@ export async function bootstrap(
     const processManager = new ProcessManager();
     startCdpProxy({ onActivity: () => processManager.markActivity() });
     setManager(createEmbeddedManager(processManager));
-    Bun.serve({
-      port: QUARK_API_PORT,
-      fetch: createManagerApp(processManager).fetch,
-    });
-    log.info(`manager: embedded (api :${QUARK_API_PORT})`);
+    log.info("manager: embedded (mounted at /manager)");
     autostart(processManager);
   }
 

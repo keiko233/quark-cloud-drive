@@ -15,7 +15,7 @@ import { OpenAPILink } from "@orpc/openapi-client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import { serverContract } from "@quark/contract/server";
 import type { ServerEvent, ServerStatus } from "@quark/contract/schemas";
-import { streamManagerEvents } from "./manager-app.ts";
+import { streamManagerEvents } from "./events.ts";
 import type { ProcessManager } from "./process.ts";
 
 /** The manager surface, independent of transport. */

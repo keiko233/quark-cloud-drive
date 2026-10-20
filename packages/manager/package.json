@@ -9,12 +9,9 @@
   "dependencies": {
     "@orpc/client": "^1.15.0",
     "@orpc/contract": "^1.15.0",
-    "@orpc/openapi": "^1.15.0",
     "@orpc/openapi-client": "^1.15.0",
     "@orpc/server": "^1.15.0",
-    "@orpc/zod": "^1.15.0",
     "@quark/config": "workspace:*",
-    "@quark/contract": "workspace:*",
-    "hono": "^4.13.5"
+    "@quark/contract": "workspace:*"
   }
 }

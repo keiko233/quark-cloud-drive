@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 
-import { MANAGER_MODE, MANAGER_URL, QUARK_API_PORT } from "@quark/config";
+import { MANAGER_MODE, MANAGER_URL, SERVER_PORT } from "@quark/config";
 import type { ServerStatus } from "@quark/contract/schemas";
 
 const BASE_URL = (
   MANAGER_MODE === "http"
     ? MANAGER_URL
-    : `http://127.0.0.1:${QUARK_API_PORT}`
+    : `http://127.0.0.1:${SERVER_PORT}/manager`
 ).replace(/\/+$/, "");
 const POLL_MS = 1_000;
 const RETRY_MS = 5_000;

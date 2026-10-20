@@ -278,7 +278,7 @@ QUARK_EXTRA_ARGS="
     --js-flags=--max-old-space-size=256
 "
 
-echo "--- Launching server (API on :${QUARK_API_PORT:-8080}) ---"
+echo "--- Launching server (API on :${SERVER_PORT:-3000}) ---"
 # The server owns: the oRPC API, the in-process CDP proxy (9223 → 9222), and
 # the thin process manager. It will exec launch-quark.sh to start the actual
 # Quark process group; that one lives in its own session so we can kill it

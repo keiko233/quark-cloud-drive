@@ -20,12 +20,11 @@ services:
       # Wine runtime used for the bundled Quark build.
       QUARK_RUNTIME: "${QUARK_RUNTIME:-spark}"
 
-      # One process owns everything: the manager is embedded (no HTTP hop, no
-      # second container). Set QUARK_MANAGER_MODE=http to point a host-side
-      # instance at this container's manager API instead.
+      # One process owns everything: the manager is embedded and mounted under
+      # /manager on the same port. Set QUARK_MANAGER_MODE=http to point a
+      # host-side instance at another service's manager URL instead.
       QUARK_MANAGER_MODE: "${QUARK_MANAGER_MODE:-embedded}"
       SERVER_PORT: "${SERVER_PORT:-3000}"
-      QUARK_API_PORT: "${QUARK_API_PORT:-8080}"
       QUARK_AUTOSTART: "${QUARK_AUTOSTART:-true}"
 
       # The KV store (task history + runtime settings) lives in the app-data volume.
@@ -38,15 +37,12 @@ services:
       CLIENT_IDLE_CHECK_INTERVAL_MS: "${CLIENT_IDLE_CHECK_INTERVAL_MS:-30000}"
 
     ports:
-      # Public API + OpenAPI docs + MCP + noVNC page.
+      # Public API + manager API + OpenAPI docs + MCP + noVNC page.
       - "${SERVER_PORT:-3000}:3000"
       # Raw VNC (x11vnc).
       - "5900:5900"
       # CDP proxy: DevTools page and host-side development.
       - "${CDP_PROXY_PORT:-9223}:9223"
-      # Manager API: process lifecycle for external consumers.
-      - "${QUARK_API_PORT:-8080}:8080"
-
     volumes:
       # Spark/AUR runtime data. This is the default runtime because the current
       # 6.6.7 installer crashes before creating a visible Electron window.

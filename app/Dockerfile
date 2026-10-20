@@ -180,12 +180,12 @@ COPY ./packages /opt/quark-app/packages
 RUN chmod +x /usr/local/bin/run-quark.sh \
                 /usr/local/bin/launch-quark.sh
 
-# Ports: 3000 public API + OpenAPI + MCP + noVNC page, 8080 manager API,
+# Ports: 3000 public API + manager API + OpenAPI + MCP + noVNC page,
 # 9223 CDP proxy, 5900 raw VNC (x11vnc).
 
 USER root
 
-EXPOSE 3000 5900 8080 9223
+EXPOSE 3000 5900 9223
 
 ENTRYPOINT ["/usr/local/bin/run-quark.sh"]
 

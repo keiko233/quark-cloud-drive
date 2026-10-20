@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "test": "QUARK_KV_PATH=/tmp/quark-drive-kv.test.sqlite3 bun test"

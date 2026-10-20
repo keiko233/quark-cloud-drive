@@ -4,9 +4,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/mod.ts"
-  },
-  "dependencies": {
-    "@jsr/libs__logger": "^3.1.10"
+    ".": "./src/index.ts"
   }
 }

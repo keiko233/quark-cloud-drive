@@ -7,14 +7,14 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
-      "@quark/config": ["./packages/config/src/mod.ts"],
-      "@quark/contract": ["./packages/contract/src/mod.ts"],
+      "@quark/config": ["./packages/config/src/index.ts"],
+      "@quark/contract": ["./packages/contract/src/index.ts"],
       "@quark/contract/schemas": ["./packages/contract/src/schemas.ts"],
       "@quark/contract/server": ["./packages/contract/src/server.ts"],
       "@quark/contract/client": ["./packages/contract/src/client.ts"],
-      "@quark/manager": ["./packages/manager/src/mod.ts"],
-      "@quark/drive": ["./packages/drive/src/mod.ts"],
-      "@quark/service": ["./packages/service/src/mod.ts"]
+      "@quark/manager": ["./packages/manager/src/index.ts"],
+      "@quark/drive": ["./packages/drive/src/index.ts"],
+      "@quark/service": ["./packages/service/src/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

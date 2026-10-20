@@ -53,7 +53,12 @@ export const CDP_URL = env["CDP_URL"] ?? "http://127.0.0.1:9223";
 
 /** Raw VNC endpoint (x11vnc); the noVNC page proxies to it. */
 export const VNC_URL = env["VNC_URL"] ?? "http://127.0.0.1:5900";
-export const NOVNC_STATIC_DIR = env["NOVNC_STATIC_DIR"] ?? "/usr/share/novnc";
+/**
+ * Optional override for the noVNC client assets. Empty (the default) serves the
+ * bundled `@novnc/novnc` package; set it to use a distro package or a custom
+ * build at that path instead.
+ */
+export const NOVNC_STATIC_DIR = env["NOVNC_STATIC_DIR"] ?? "";
 
 export const RECONNECT_INTERVAL_MS = envInt("RECONNECT_INTERVAL_MS", 5_000);
 export const CDP_READY_TIMEOUT_MS = envInt("CDP_READY_TIMEOUT_MS", 30_000);

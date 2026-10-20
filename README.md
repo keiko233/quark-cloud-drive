@@ -169,7 +169,10 @@ Full list in `.env.example`; every default lives in
   `/task-list`.
 - **MCP** — `/mcp` exposes the client contract (including `manager_*`) as MCP
   tools over Streamable HTTP.
-- **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`.
+- **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`. The
+  client ships in the Bun dependency tree (`@novnc/novnc`); there is no
+  websockify sidecar or separate `:6080` listener. Set `NOVNC_STATIC_DIR` only
+  to override the bundled assets.
 - **DevTools** — `/devtools` target picker; `/devtools/ws/*` bridges the
   DevTools frontend WebSocket to the CDP proxy; `/devtools/http/*` proxies the
   browser-hosted frontend assets.

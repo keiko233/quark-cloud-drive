@@ -1,7 +1,13 @@
 import { chromium } from "playwright";
 import { stat } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const QUARK_PAN_CLIENT_OFFICIAL_SITE_URL = "https://pan.quark.cn/";
+const INSTALLER_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../private/installer.exe",
+);
 
 async function hasExistingInstaller(installerPath: string) {
   try {
@@ -16,7 +22,7 @@ async function hasExistingInstaller(installerPath: string) {
 }
 
 async function main() {
-  const installerPath = `${process.cwd()}/installer.exe`;
+  const installerPath = INSTALLER_PATH;
   const existingInstallerAvailable = await hasExistingInstaller(installerPath);
 
   const browser = await chromium.launch({

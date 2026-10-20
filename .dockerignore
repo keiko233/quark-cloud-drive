@@ -1,10 +1,10 @@
 # Exclude everything not needed by the app Dockerfile. Do NOT exclude
-# apps/app/wineprefix.tar.zst — it is bind-mounted by the Dockerfile.
+# app/wineprefix.tar.zst — it is bind-mounted by the Dockerfile.
 .git
 .github
 docs
 data
-apps/*/data
+app/data
 *.sqlite3
 wine-data*
 downloads
@@ -15,4 +15,4 @@ node_modules
 # carry host-only links).
 **/node_modules
 # Leftovers from prepare-wineprefix.sh (the real artifact is the .tar.zst).
-apps/*/.prepared
+app/.prepared

@@ -4,7 +4,7 @@ services:
   app:
     build:
       context: .
-      dockerfile: apps/app/Dockerfile
+      dockerfile: app/Dockerfile
     image: ghcr.io/keiko233/quark-cloud-drive:latest
     container_name: quark-cloud-drive
     hostname: quark-cloud-drive

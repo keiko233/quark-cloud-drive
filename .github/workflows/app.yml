@@ -33,41 +33,41 @@ jobs:
 
       - name: Install Playwright Chromium
         run: bun run playwright:install
-        working-directory: apps/app
+        working-directory: app
 
       - name: Download Quark installer
         run: bun run download-client
-        working-directory: apps/app
+        working-directory: app
 
       - name: Restore Spark deb cache
         id: deb-cache
         uses: actions/cache@v4
         with:
-          path: apps/app/.deb-cache
-          key: spark-debs-${{ hashFiles('apps/app/scripts/download-debs.sh') }}
+          path: app/.deb-cache
+          key: spark-debs-${{ hashFiles('app/scripts/download-debs.sh') }}
 
       - name: Download Spark debs
         run: ./scripts/download-debs.sh
-        working-directory: apps/app
+        working-directory: app
 
       - name: Compute Wine prefix cache key
         id: wp-key
         run: |
-          installer_sha="$(sha256sum apps/app/installer.exe | awk '{print $1}' | cut -c1-16)"
-          deepin_sha="$(sha256sum apps/app/.deb-cache/deepin-wine8.deb | awk '{print $1}' | cut -c1-16)"
+          installer_sha="$(sha256sum private/installer.exe | awk '{print $1}' | cut -c1-16)"
+          deepin_sha="$(sha256sum app/.deb-cache/deepin-wine8.deb | awk '{print $1}' | cut -c1-16)"
           echo "key=wineprefix-$installer_sha-$deepin_sha" >> "$GITHUB_OUTPUT"
 
       - name: Restore Wine prefix cache
         id: wp-cache
         uses: actions/cache@v4
         with:
-          path: apps/app/wineprefix.tar.zst
+          path: app/wineprefix.tar.zst
           key: ${{ steps.wp-key.outputs.key }}
 
       - name: Prepare Wine prefix
         if: steps.wp-cache.outputs.cache-hit != 'true'
         run: ./scripts/prepare-wineprefix.sh
-        working-directory: apps/app
+        working-directory: app
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -93,7 +93,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./apps/app/Dockerfile
+          file: ./app/Dockerfile
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

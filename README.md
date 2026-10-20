@@ -22,7 +22,7 @@ Each package owns one responsibility:
 | `@quark/manager`  | Wine/Electron process lifecycle, CDP proxy, manager API, its client   |
 | `@quark/drive`    | The logged-in session and the Quark business capabilities             |
 | `@quark/service`  | Public surface (REST/OpenAPI/MCP/noVNC/DevTools), policy, composition |
-| `apps/app`        | The single entrypoint + the single Docker image                       |
+| `app`             | The single entrypoint + the single Docker image                       |
 
 `@quark/manager` exposes one `ManagerApi` interface with two transports: an
 in-process (embedded) one — what the image uses — and an HTTP one for host-side
@@ -35,11 +35,11 @@ quark-cloud-drive/
 ├── docker-compose.yaml        # one service
 ├── package.json               # bun workspaces + tasks (check/test)
 ├── .env.example               # all tunable env vars
-├── apps/
-│   └── app/                   # the single entrypoint + Dockerfile
-│       ├── Dockerfile
-│       ├── scripts/           # run-quark.sh, launch-quark.sh, wine prefix prep
-│       └── src/main.ts        # await bootstrap()
+├── app/                       # the single entrypoint + Dockerfile
+│   ├── Dockerfile
+│   ├── scripts/               # run-quark.sh, launch-quark.sh, wine prefix prep
+│   └── src/main.ts            # await bootstrap()
+├── private/                   # build-only inputs (Quark installer)
 └── packages/
     ├── contract/src/          # oRPC contracts + zod schemas
     ├── config/src/            # env.ts + logger.ts

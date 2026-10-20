@@ -2,7 +2,7 @@
 //
 // One process owns the whole app: the process manager (embedded, or remote
 // over HTTP), the CDP proxy, the manager API, the public API surface, the idle
-// monitor, and the renderer attach loop. The entrypoint in apps/app only calls
+// monitor, and the renderer attach loop. The entrypoint in app only calls
 // this and nothing else.
 
 import {

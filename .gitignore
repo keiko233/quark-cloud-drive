@@ -22,7 +22,7 @@ node_modules
 
 # Deno KV / local runtime data
 data
-apps/*/data
+app/data
 
 # Local agent state
 .commandcode

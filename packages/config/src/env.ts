@@ -76,7 +76,7 @@ export const WINESERVER_BIN = env["WINESERVER_BIN"] ??
 /**
  * Launch script resolution: an explicit LAUNCH_SCRIPT wins; otherwise the
  * first existing candidate is used so bare dev runs find the repo's
- * `apps/app/scripts/launch-quark.sh` (the image installs it at
+ * `app/scripts/launch-quark.sh` (the image installs it at
  * /usr/local/bin/launch-quark.sh).
  */
 function resolveLaunchScript(): string {
@@ -86,8 +86,8 @@ function resolveLaunchScript(): string {
     const candidate of [
       "/usr/local/bin/launch-quark.sh",
       "./scripts/launch-quark.sh",
-      "apps/app/scripts/launch-quark.sh",
-      "/opt/quark-app/apps/app/scripts/launch-quark.sh",
+      "app/scripts/launch-quark.sh",
+      "/opt/quark-app/app/scripts/launch-quark.sh",
     ]
   ) {
     try {

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# apps/app — the single image for the whole app.
+# app — the single image for the whole app.
 #
 # One container, one entrypoint: the Wine/Electron Quark host plus the Bun
 # runtime that owns process management, the CDP proxy, the manager API, the
@@ -8,7 +8,7 @@
 #
 # Build context must be the repository root (the Dockerfile copies the whole
 # workspace so the @quark/* packages resolve). The 1.3 GB wineprefix.tar.zst is
-# a build artifact (gitignored); keep it under apps/app/.
+# a build artifact (gitignored); keep it under app/.
 # The runtime ships as a static binary copied out of the official image, so the
 # app keeps the Wine base and gains no second distribution.
 FROM oven/bun:1.4.3 AS bun
@@ -35,13 +35,12 @@ ENV RDP_SERVER=no \
 
 # WINEDLLOVERRIDES is not set globally because the installer may need mscoree.
 # Suppress Mono/Gecko only during wineboot in the prepare script.
-RUN --mount=type=bind,source=apps/app/.deb-cache/deepin-wine8.deb,target=/tmp/deepin-wine8.deb \
+RUN --mount=type=bind,source=app/.deb-cache/deepin-wine8.deb,target=/tmp/deepin-wine8.deb \
     apt-get update && \
     apt-get install -y --no-install-recommends \
         fonts-wqy-microhei \
         fonts-wqy-zenhei \
         locales \
-        novnc \
         x11vnc \
         xdotool \
         zstd \
@@ -119,8 +118,8 @@ COPY --from=bun /usr/local/bin/bunx /usr/local/bin/bunx
 
 FROM base AS install-debug
 
-COPY --chown=wineuser:wineuser ./apps/app/installer.exe /tmp/installer.exe
-COPY --chown=wineuser:wineuser ./apps/app/cjk-fonts.reg /tmp/cjk-fonts.reg
+COPY --chown=wineuser:wineuser ./private/installer.exe /tmp/installer.exe
+COPY --chown=wineuser:wineuser ./app/cjk-fonts.reg /tmp/cjk-fonts.reg
 
 USER root
 
@@ -132,8 +131,8 @@ CMD rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 && \
 
 FROM base
 
-RUN --mount=type=bind,source=apps/app/wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
-    --mount=type=bind,source=apps/app/.deb-cache/quark-spark.deb,target=/tmp/quark-spark.deb \
+RUN --mount=type=bind,source=app/wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
+    --mount=type=bind,source=app/.deb-cache/quark-spark.deb,target=/tmp/quark-spark.deb \
     rm -rf /opt/wineprefix && \
     mkdir -p /opt/wineprefix && \
     tar --zstd -xf /tmp/wineprefix.tar.zst -C /opt/wineprefix && \
@@ -150,9 +149,9 @@ RUN --mount=type=bind,source=apps/app/wineprefix.tar.zst,target=/tmp/wineprefix.
     chown -R wineuser:wineuser /opt/spark-bottle && \
     rm -rf /tmp/quark-spark
 
-COPY ./apps/app/scripts/run-quark.sh /usr/local/bin/run-quark.sh
-COPY ./apps/app/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
-COPY ./apps/app/scripts/configure-quark-settings.ts /usr/local/bin/configure-quark-settings.ts
+COPY ./app/scripts/run-quark.sh /usr/local/bin/run-quark.sh
+COPY ./app/scripts/launch-quark.sh /usr/local/bin/launch-quark.sh
+COPY ./app/scripts/configure-quark-settings.ts /usr/local/bin/configure-quark-settings.ts
 
 # The app + workspace sources. The image runs with cwd=/opt/quark-app, which is
 # also where the KV file lands by default (./data/kv.sqlite3).
@@ -161,8 +160,8 @@ WORKDIR /opt/quark-app
 # Manifests first, so the dependency layer only rebuilds when one of them moves.
 # playwright is a runtime dependency (CDP attach) but never launches a browser,
 # so the browser download is skipped.
-COPY ./package.json ./bun.lock ./.npmrc /opt/quark-app/
-COPY ./apps/app/package.json /opt/quark-app/apps/app/package.json
+COPY ./package.json ./bun.lock /opt/quark-app/
+COPY ./app/package.json /opt/quark-app/app/package.json
 COPY ./packages/config/package.json /opt/quark-app/packages/config/package.json
 COPY ./packages/contract/package.json /opt/quark-app/packages/contract/package.json
 COPY ./packages/drive/package.json /opt/quark-app/packages/drive/package.json
@@ -172,10 +171,10 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN bun install --frozen-lockfile --production
 
 # Only the runtime sources. The 1.3 GB wineprefix.tar.zst is bind-mounted from
-# the build context above, and installer.exe/.deb-cache are build-time only, so
-# baking ./apps/app wholesale would add ~1.5 GB to the image for nothing.
-COPY ./apps/app/src /opt/quark-app/apps/app/src
-COPY ./apps/app/download-client.ts /opt/quark-app/apps/app/download-client.ts
+# the build context above, and private/installer.exe/.deb-cache are build-time only, so
+# baking ./app wholesale would add ~1.5 GB to the image for nothing.
+COPY ./app/src /opt/quark-app/app/src
+COPY ./app/download-client.ts /opt/quark-app/app/download-client.ts
 COPY ./packages /opt/quark-app/packages
 
 RUN chmod +x /usr/local/bin/run-quark.sh \

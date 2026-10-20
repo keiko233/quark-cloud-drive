@@ -175,13 +175,8 @@ sleep 2
 echo "--- Starting x11vnc on :5900 ---"
 x11vnc -display :0 -forever -nopw -rfbport 5900 -cursor most -quiet &
 
-# noVNC: bridge the VNC port to a browser over WebSocket. Open
-# http://<host>:6080/vnc.html (or just :6080) to reach the desktop without a
-# native VNC client. Served only when novnc is installed in the image.
-if [ -d /usr/share/novnc ] && command -v websockify >/dev/null 2>&1; then
-    echo "--- Starting noVNC (web) on :6080 ---"
-    websockify --web=/usr/share/novnc 6080 127.0.0.1:5900 >/tmp/novnc.log 2>&1 &
-fi
+# noVNC is served by the Bun app on :3000/vnc and connects to the same-origin
+# /vnc/ws bridge. There is no standalone websockify listener or :6080 port.
 
 echo "--- Resolving Quark runtime ---"
 if [ "$QUARK_RUNTIME" = "spark" ] && [ -f "/opt/spark-bottle/drive_c/Program Files (x86)/quark-cloud-drive/QuarkCloudDrive.exe" ]; then
@@ -351,4 +346,4 @@ fi
 # The single entrypoint owns everything: process manager, CDP proxy, the
 # manager API, the business API/MCP surface and the renderer attach loop.
 cd /opt/quark-app
-exec bun run /opt/quark-app/apps/app/src/main.ts
+exec bun run /opt/quark-app/app/src/main.ts

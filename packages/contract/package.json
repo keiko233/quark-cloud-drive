@@ -12,8 +12,5 @@
   "dependencies": {
     "@orpc/contract": "^1.15.0",
     "zod": "^4.5.4"
-  },
-  "devDependencies": {
-    "@jsr/std__assert": "^1.0.19"
   }
 }

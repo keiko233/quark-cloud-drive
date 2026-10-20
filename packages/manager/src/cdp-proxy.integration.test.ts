@@ -2,7 +2,7 @@
 //   1. HTTP /json/* proxy with ws:// URL rewrite
 //   2. WebSocket handshake + bidirectional frame relay
 //   3. Browser.* intercept returns fake success and does NOT reach Quark
-import { assertEquals } from "@jsr/std__assert";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { test } from "bun:test";
 import { type AddressInfo, createServer } from "node:net";
 import {

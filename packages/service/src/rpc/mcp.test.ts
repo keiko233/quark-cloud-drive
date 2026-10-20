@@ -1,4 +1,4 @@
-import { assertEquals } from "@jsr/std__assert";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { test } from "bun:test";
 import { isProcedure } from "@orpc/server";
 import { clientRouter } from "./router.ts";

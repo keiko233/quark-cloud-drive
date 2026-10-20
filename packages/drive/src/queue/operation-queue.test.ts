@@ -1,4 +1,8 @@
-import { assertEquals, assertRejects, assertThrows } from "@jsr/std__assert";
+import {
+  deepStrictEqual as assertEquals,
+  rejects as assertRejects,
+  throws as assertThrows,
+} from "node:assert/strict";
 import { test } from "bun:test";
 import { OperationQueue } from "./operation-queue.ts";
 

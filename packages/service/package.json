@@ -17,8 +17,5 @@
     "@quark/manager": "workspace:*",
     "hono": "^4.13.5",
     "playwright": "^1.62.1"
-  },
-  "devDependencies": {
-    "@jsr/std__assert": "^1.0.19"
   }
 }

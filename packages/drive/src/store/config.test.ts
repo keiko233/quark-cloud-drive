@@ -1,4 +1,4 @@
-import { assertEquals } from "@jsr/std__assert";
+import { deepStrictEqual as assertEquals } from "node:assert/strict";
 import { test } from "bun:test";
 import { RuntimeConfigSchema } from "@quark/contract/schemas";
 import { DEFAULT_RUNTIME_CONFIG, withCurrentGuardDefaults } from "./config.ts";

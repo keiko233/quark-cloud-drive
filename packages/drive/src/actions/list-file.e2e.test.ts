@@ -1,4 +1,6 @@
-import { assert, assertEquals } from "@jsr/std__assert";
+import assert, {
+  deepStrictEqual as assertEquals,
+} from "node:assert/strict";
 import { test } from "bun:test";
 import { chromium } from "playwright";
 

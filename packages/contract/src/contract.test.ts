@@ -1,4 +1,7 @@
-import { assertEquals, assertThrows } from "@jsr/std__assert";
+import {
+  deepStrictEqual as assertEquals,
+  throws as assertThrows,
+} from "node:assert/strict";
 import { test } from "bun:test";
 import { clientContract } from "./client.ts";
 import { serverContract } from "./server.ts";

@@ -16,8 +16,5 @@
     "@quark/config": "workspace:*",
     "@quark/contract": "workspace:*",
     "hono": "^4.13.5"
-  },
-  "devDependencies": {
-    "@jsr/std__assert": "^1.0.19"
   }
 }

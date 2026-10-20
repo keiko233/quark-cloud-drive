@@ -7,7 +7,6 @@
 // logs, or persists credentials.
 
 import { statSync } from "node:fs";
-import type { levellike } from "@jsr/libs__logger";
 
 const env = process.env;
 
@@ -139,4 +138,25 @@ export const KV_PATH = env["QUARK_KV_PATH"] ??
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 
-export const LOG_LEVEL = (env["LOG_LEVEL"] ?? "info") as levellike;
+export type LogLevel =
+  | "trace"
+  | "debug"
+  | "info"
+  | "warn"
+  | "error"
+  | "silent";
+
+const LOG_LEVELS: LogLevel[] = [
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "silent",
+];
+
+const configuredLogLevel = (env["LOG_LEVEL"] ?? "info").trim().toLowerCase();
+export const LOG_LEVEL: LogLevel =
+  LOG_LEVELS.includes(configuredLogLevel as LogLevel)
+    ? (configuredLogLevel as LogLevel)
+    : "info";

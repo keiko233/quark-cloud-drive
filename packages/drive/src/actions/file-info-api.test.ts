@@ -1,4 +1,7 @@
-import { assertEquals, assertRejects } from "@jsr/std__assert";
+import {
+  deepStrictEqual as assertEquals,
+  rejects as assertRejects,
+} from "node:assert/strict";
 import { test } from "bun:test";
 import type { Page } from "playwright";
 import {

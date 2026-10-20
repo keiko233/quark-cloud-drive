@@ -116,6 +116,13 @@ the Quark target. The CDP target list is also available at
 Without a Wine/Quark launch script present, `QUARK_AUTOSTART` is skipped with a
 warning and the manager + CDP proxy still come up.
 
+After Wine starts, the service waits up to 30 seconds for the Quark renderer to
+open and paint. A listening CDP port alone does not count as ready. If startup
+fails or the renderer remains white, the service restarts Wine up to three
+times. It then waits for an explicit `/manager/start` or `/manager/restart`;
+an explicit `/manager/stop` always suppresses automatic recovery. The reason
+for each failed readiness check is written to the service log.
+
 ## Env
 
 Full list in `.env.example`; every default lives in

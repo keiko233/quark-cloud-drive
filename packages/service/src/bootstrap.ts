@@ -22,7 +22,9 @@ import {
   RECONNECT_INTERVAL_MS,
   WINE_BIN,
 } from "@quark/config";
+import { getManager } from "@quark/manager";
 import { attachStoreHooks, kvStore } from "@quark/drive";
+import { autoWakeBlockReason } from "./monitor/wake.ts";
 import { startService } from "./rpc/index.ts";
 import { sleeper } from "./rpc/runtime.ts";
 import { connect } from "./session/connect.ts";
@@ -98,11 +100,64 @@ function autostart(processManager: ProcessManager): void {
  * away, so this loop is also the reconnect policy.
  */
 async function attachLoop(): Promise<void> {
+  let recoveryAttempts = 0;
+  // undefined means no attempt has been inspected yet. An adopted Wine
+  // process has startedAt=null, but its first failed renderer still needs
+  // recovery after a Bun server reload.
+  let failedLaunchAt: number | null | undefined;
+  let pendingVerification = false;
   while (true) {
+    pendingVerification = false;
     try {
       await connect();
+      recoveryAttempts = 0;
+      failedLaunchAt = undefined;
     } catch (err) {
       log.error("ERROR:", err);
+      try {
+        if (await autoWakeBlockReason() === null) {
+          const status = await getManager().status();
+          if (status.startedAt !== failedLaunchAt) {
+            failedLaunchAt = status.startedAt;
+            if (recoveryAttempts < 3) {
+              recoveryAttempts++;
+              log.warn(
+                `Quark startup failed; restarting Wine (${recoveryAttempts}/3)`,
+              );
+              await getManager().restart();
+              pendingVerification = true;
+            } else {
+              log.error(
+                "Quark startup failed after three recovery restarts; " +
+                  "waiting for a manual start/restart",
+              );
+            }
+          }
+        }
+      } catch (recoveryError) {
+        log.warn(`Quark startup recovery failed: ${recoveryError}`);
+        // A failed restart never created a new startedAt; allow the next
+        // bounded attempt to retry the launch itself.
+        if (recoveryAttempts < 3) failedLaunchAt = undefined;
+      }
+    }
+    if (recoveryAttempts >= 3 && !pendingVerification) {
+      // Do not let ensureQuarkAwake() keep launching indefinitely. A new
+      // operator-initiated launch is identified by its start timestamp.
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, RECONNECT_INTERVAL_MS));
+        try {
+          if (await autoWakeBlockReason() !== null) break;
+          const status = await getManager().status();
+          if (status.startedAt !== failedLaunchAt) {
+            recoveryAttempts = 0;
+            failedLaunchAt = undefined;
+            break;
+          }
+        } catch {
+          // manager may be restarting
+        }
+      }
     }
     log.debug(`Reconnecting in ${RECONNECT_INTERVAL_MS}ms...`);
     await new Promise((r) => setTimeout(r, RECONNECT_INTERVAL_MS));

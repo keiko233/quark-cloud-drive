@@ -191,7 +191,9 @@ Full list in `.env.example`; every default lives in
 - **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`. The
   client ships in the Bun dependency tree (`@novnc/novnc`); there is no
   websockify sidecar or separate `:6080` listener. Set `NOVNC_STATIC_DIR` only
-  to override the bundled assets.
+  to override the bundled assets. HTTP access is supported for the current
+  no-password VNC endpoint and automatically uses `ws://`; browser APIs that
+  require a secure context remain unavailable over remote HTTP.
 - **DevTools** — `/devtools` target picker; `/devtools/ws/*` bridges the
   DevTools frontend WebSocket to the CDP proxy; `/devtools/http/*` proxies the
   browser-hosted frontend assets.

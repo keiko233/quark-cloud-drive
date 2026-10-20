@@ -7,7 +7,7 @@ describe("noVNC surface", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toStartWith("text/html");
-    expect(await response.text()).toContain('from "./core/rfb.js"');
+    expect(await response.text()).toContain('import("./core/rfb.js")');
   });
 
   test("serves noVNC core and vendor assets from the package", async () => {

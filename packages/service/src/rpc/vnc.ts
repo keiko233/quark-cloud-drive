@@ -53,8 +53,6 @@ const LITE_PAGE = `<!DOCTYPE html>
 <div id="status">connecting…</div>
 <button id="reconnect">reconnect</button>
 <script type="module">
-  import RFB from "./core/rfb.js";
-
   const status = document.getElementById("status");
   const button = document.getElementById("reconnect");
   const params = new URLSearchParams(location.search);
@@ -64,18 +62,26 @@ const LITE_PAGE = `<!DOCTYPE html>
 
   let rfb = null;
 
-  function connect() {
+  async function connect() {
     button.style.display = "none";
     status.textContent = "connecting…";
-    rfb = new RFB(document.getElementById("screen"), url, { shared: true });
-    rfb.scaleViewport = true;
-    rfb.resizeSession = true;
-    rfb.addEventListener("connect", () => { status.textContent = "connected"; });
-    rfb.addEventListener("disconnect", (event) => {
-      status.textContent = "disconnected" +
-        (event.detail && event.detail.clean === false ? " (error)" : "");
+    try {
+      const { default: RFB } = await import("./core/rfb.js");
+      rfb = new RFB(document.getElementById("screen"), url, { shared: true });
+      rfb.scaleViewport = true;
+      rfb.resizeSession = true;
+      rfb.addEventListener("connect", () => { status.textContent = "connected"; });
+      rfb.addEventListener("disconnect", (event) => {
+        rfb = null;
+        status.textContent = "disconnected" +
+          (event.detail && event.detail.clean === false ? " (error)" : "");
+        button.style.display = "block";
+      });
+    } catch (error) {
+      rfb = null;
+      status.textContent = "connection failed: " + error;
       button.style.display = "block";
-    });
+    }
   }
 
   button.addEventListener("click", connect);

@@ -7,7 +7,12 @@ describe("noVNC surface", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toStartWith("text/html");
-    expect(await response.text()).toContain('import("./core/rfb.js")');
+    const html = await response.text();
+    expect(html).toContain('import("./core/rfb.js")');
+    // RFB inserts its own canvas. A canvas target hides that child and leaves
+    // the page black even after the VNC connection succeeds.
+    expect(html).toContain('<div id="screen"></div>');
+    expect(html).toContain("rfb.resizeSession = false");
   });
 
   test("serves noVNC core and vendor assets from the package", async () => {

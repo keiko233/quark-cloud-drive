@@ -32,8 +32,9 @@ const MIME: Record<string, string> = {
 /**
  * Minimal noVNC client shell. The npm package ships `core/` and `vendor/` but
  * no HTML entry point (upstream only keeps that page in its source tree), so
- * this is the equivalent of upstream's `vnc_lite.html`: a full-window canvas
- * wired to `<same origin>/<path>`.
+ * this is the equivalent of upstream's `vnc_lite.html`: a full-window screen
+ * container wired to `<same origin>/<path>`. RFB appends its own canvas into
+ * this container, so the container itself must not be a canvas element.
  */
 const LITE_PAGE = `<!DOCTYPE html>
 <html lang="en">
@@ -49,7 +50,7 @@ const LITE_PAGE = `<!DOCTYPE html>
   #reconnect { display: none; position: fixed; top: 8px; right: 8px;
                font: 12px monospace; padding: 6px 10px; cursor: pointer; }
 </style>
-<canvas id="screen"></canvas>
+<div id="screen"></div>
 <div id="status">connecting…</div>
 <button id="reconnect">reconnect</button>
 <script type="module">
@@ -69,7 +70,8 @@ const LITE_PAGE = `<!DOCTYPE html>
       const { default: RFB } = await import("./core/rfb.js");
       rfb = new RFB(document.getElementById("screen"), url, { shared: true });
       rfb.scaleViewport = true;
-      rfb.resizeSession = true;
+      // x11vnc cannot resize the fixed Xvfb/Xorg desktop. Scale locally only.
+      rfb.resizeSession = false;
       rfb.addEventListener("connect", () => { status.textContent = "connected"; });
       rfb.addEventListener("disconnect", (event) => {
         rfb = null;

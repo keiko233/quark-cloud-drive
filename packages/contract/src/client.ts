@@ -107,7 +107,8 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     description: [
       "Capture the Quark login QR code as a PNG image. This is the one",
       "endpoint that still reads the login window: the QR code is rendered",
-      "client-side and has no JSON API.",
+      "client-side and has no JSON API yet. TODO(native-api): switch this",
+      "endpoint to Quark's native QR-login flow when it is available.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })

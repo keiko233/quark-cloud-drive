@@ -14,6 +14,14 @@ import { CDP_URL } from "@quark/config";
 import { ensureQuarkAwake } from "../monitor/wake.ts";
 import { clearLoggedOutStopMarker } from "../monitor/status.ts";
 
+/**
+ * DOM-backed login QR capture.
+ *
+ * TODO(login-qrcode): replace this DOM path with Quark's native QR-login API
+ * once that flow is confirmed stable. This is the only business capability
+ * that still clicks or reads the Quark UI; all other business actions use the
+ * cloud-drive JSON APIs.
+ */
 async function getMemberPage(
   context: BrowserContext,
   homePage: Page,

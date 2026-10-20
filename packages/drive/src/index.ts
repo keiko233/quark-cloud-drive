@@ -29,7 +29,6 @@ export {
 export {
   getBrowserContext,
   getHomePage,
-  getPageRoute,
 } from "./browser/page-utils.ts";
 export { kvStore } from "./store/kv.ts";
 export type { TaskRecord } from "./store/kv.ts";

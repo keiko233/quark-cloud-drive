@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
 
-import { MANAGER_MODE, MANAGER_URL, SERVER_PORT } from "@quark/config";
+import { existsSync } from "node:fs";
+import {
+  MANAGER_MODE,
+  MANAGER_URL,
+  SERVER_PORT,
+  WINE_BIN,
+} from "@quark/config";
 import type { ServerStatus } from "@quark/contract/schemas";
 
 const BASE_URL = (
@@ -11,6 +17,8 @@ const BASE_URL = (
 const POLL_MS = 1_000;
 const RETRY_MS = 5_000;
 const REQUEST_TIMEOUT_MS = 5_000;
+const embedded = MANAGER_MODE !== "http";
+const localWineAvailable = !embedded || existsSync(WINE_BIN);
 
 const shutdown = new AbortController();
 
@@ -156,16 +164,24 @@ async function main(): Promise<void> {
     if (!(await waitForManager())) break;
 
     if (!clientReady) {
-      try {
-        clientReady = await ensureClient();
-      } catch (error) {
+      if (!localWineAvailable) {
         log(
-          `client startup failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+          `Wine runtime not found at ${WINE_BIN}; API-only mode. ` +
+            "Use the Docker dev overlay to run Quark.",
         );
-        await sleep(RETRY_MS);
-        continue;
+        clientReady = true;
+      } else {
+        try {
+          clientReady = await ensureClient();
+        } catch (error) {
+          log(
+            `client startup failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          await sleep(RETRY_MS);
+          continue;
+        }
       }
     }
 

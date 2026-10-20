@@ -98,6 +98,10 @@ The entrypoint starts Xorg/Xvfb, x11vnc and the Wine prefix once before
 `bun.lock` against a stamp in the `node_modules` volume and only runs
 `bun install --frozen-lockfile` when dependencies change.
 
+On the host, `bun dev` starts the API and dashboard surface on `:3000` but
+skips Quark because the Wine runtime is unavailable. Use the Docker overlay
+when the renderer is needed.
+
 Run checks and tests inside the same container:
 
 ```bash

@@ -92,7 +92,9 @@ export function startService(): void {
     },
     websocket,
   });
-  log.debug(`oRPC/Hono server listening on port ${SERVER_PORT}`);
+  log.info(
+    `API listening on http://localhost:${SERVER_PORT} (manager: /manager)`,
+  );
   log.debug(`API docs: http://localhost:${SERVER_PORT}/`);
   log.debug(`OpenAPI spec: http://localhost:${SERVER_PORT}/spec.json`);
 }

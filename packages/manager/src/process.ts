@@ -192,8 +192,9 @@ export class ProcessManager {
       this.proc = Bun.spawn([cmd.command, ...cmd.args], {
         env: { ...process.env, ...cmd.env },
         stdout: "ignore",
-        stderr: "ignore",
+        stderr: "pipe",
       });
+      this.logLauncherExit(this.proc);
     } catch (e) {
       throw new Error(
         `launch-quark failed: ${e instanceof Error ? e.message : e}`,
@@ -388,6 +389,31 @@ export class ProcessManager {
     return isOwnProcessGroup(pgid, readProcessGroup(process.pid))
       ? pgid
       : null;
+  }
+
+  private logLauncherExit(proc: Bun.Subprocess): void {
+    const stderr = proc.stderr as ReadableStream<Uint8Array>;
+    const decoder = new TextDecoder();
+    let captured = "";
+
+    void (async () => {
+      const reader = stderr.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (captured.length < 8_192) {
+          captured += decoder.decode(value, { stream: true });
+        }
+      }
+    })().catch(() => {});
+
+    proc.exited.then((code) => {
+      if (code === 0) return;
+      const detail = captured.trim();
+      log.warn(
+        `launch script exited with code ${code}${detail ? `: ${detail}` : ""}`,
+      );
+    }).catch(() => {});
   }
 
   private async findQuarkWindows(): Promise<string[]> {

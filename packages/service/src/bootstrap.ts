@@ -5,6 +5,7 @@
 // monitor, and the renderer attach loop. The entrypoint in app only calls
 // this and nothing else.
 
+import { existsSync } from "node:fs";
 import {
   createEmbeddedManager,
   createHttpManager,
@@ -19,6 +20,7 @@ import {
   MANAGER_URL,
   QUARK_AUTOSTART,
   RECONNECT_INTERVAL_MS,
+  WINE_BIN,
 } from "@quark/config";
 import { attachStoreHooks, kvStore } from "@quark/drive";
 import { startService } from "./rpc/index.ts";
@@ -41,7 +43,10 @@ export async function bootstrap(
   await kvStore.open();
   attachStoreHooks();
 
-  if (MANAGER_MODE === "http") {
+  const embedded = MANAGER_MODE !== "http";
+  const wineAvailable = !embedded || existsSync(WINE_BIN);
+
+  if (!embedded) {
     setManager(createHttpManager(MANAGER_URL));
     log.info(`manager: http (${MANAGER_URL})`);
   } else {
@@ -52,14 +57,23 @@ export async function bootstrap(
     startCdpProxy({ onActivity: () => processManager.markActivity() });
     setManager(createEmbeddedManager(processManager));
     log.info("manager: embedded (mounted at /manager)");
-    autostart(processManager);
+    if (wineAvailable) {
+      autostart(processManager);
+    } else {
+      log.warn(
+        `Wine runtime not found at "${WINE_BIN}" — starting API only. ` +
+          "Run inside the Docker dev overlay to manage Quark.",
+      );
+    }
   }
 
   startService();
   sleeper.start();
 
-  if (options.attachRenderer !== false) {
+  if (options.attachRenderer !== false && wineAvailable) {
     void attachLoop();
+  } else if (options.attachRenderer !== false) {
+    log.warn("renderer attach disabled because Wine is unavailable");
   }
 }
 

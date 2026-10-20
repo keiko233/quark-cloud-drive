@@ -76,26 +76,34 @@ Notes:
 
 ### Local dev
 
-For daily development, run the app inside Docker and put a second instance of
-the same code on the host, pointed at the container's manager. The container
-owns Wine/Quark, Xorg/VNC and the CDP proxy; the host-side instance owns only
-the API surface and connects over HTTP. This avoids rebuilding the (large) app
-image when iterating on API code.
+Development runs inside the container because Wine/Electron, Xorg, x11vnc and
+CDP must share one runtime. The dev overlay mounts the repository, keeps
+dependencies and app data in separate volumes, and uses a separate container
+name and manager port:
 
 ```bash
-docker compose up -d --build
-QUARK_MANAGER_MODE=http bun run dev      # host-side service with --watch
+docker compose -f docker-compose.yaml -f compose.dev.yaml up --build
 ```
 
-Stop the container's own service port first, or set `SERVER_PORT=3001` — the
-host instance binds `:3000` by default. The host-side defaults match the Compose
-port mappings:
+`bun dev` is the aggregate of two independent segments:
 
-- `QUARK_MANAGER_URL=http://127.0.0.1:8080` — container manager API
-- `CDP_URL=http://127.0.0.1:9223` — container CDP proxy
+- `bun run dev:server` — `bun --watch app/src/main.ts`; edits restart only the
+  Bun API/manager/CDP-proxy process.
+- `bun run dev:client` — waits for the manager API, starts Quark once through
+  it, then follows its process events. It is not part of the Bun watch graph,
+  so server reloads never restart Wine/Quark.
 
-Copy `.env.example` to `.env` to set those once. A host-side instance has no
-Wine runtime, so it cannot boot Quark itself: it drives the container's manager.
+The entrypoint starts Xorg/Xvfb, x11vnc and the Wine prefix once before
+`bun dev`; those stay alive across server reloads. The dev entrypoint checks
+`bun.lock` against a stamp in the `node_modules` volume and only runs
+`bun install --frozen-lockfile` when dependencies change.
+
+Run checks and tests inside the same container:
+
+```bash
+docker compose -f docker-compose.yaml -f compose.dev.yaml exec app bun run check
+docker compose -f docker-compose.yaml -f compose.dev.yaml exec app bun test
+```
 
 To inspect the live renderer, open `http://127.0.0.1:3000/devtools` and select
 the Quark target. The CDP target list is also available at

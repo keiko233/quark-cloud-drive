@@ -129,7 +129,7 @@ CMD rm -f /tmp/.X0-lock /tmp/.X11-unix/X0 && \
     x11vnc -display :0 -forever -nopw -rfbport 5900 -cursor most -quiet & \
     tail -f /dev/null
 
-FROM base
+FROM base AS runtime
 
 RUN --mount=type=bind,source=app/wineprefix.tar.zst,target=/tmp/wineprefix.tar.zst \
     --mount=type=bind,source=app/.deb-cache/quark-spark.deb,target=/tmp/quark-spark.deb \
@@ -188,3 +188,15 @@ USER root
 EXPOSE 3000 5900 8080 9223
 
 ENTRYPOINT ["/usr/local/bin/run-quark.sh"]
+
+# Development reuses the exact Wine/runtime layer, but runs the bind-mounted
+# workspace through the Bun dev supervisor. Production is kept as the final
+# stage so a plain `docker build` still produces the runtime image.
+FROM runtime AS dev
+COPY ./app/scripts/dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
+COPY ./app/scripts/dev-client.ts /opt/quark-app/app/scripts/dev-client.ts
+RUN chmod +x /usr/local/bin/dev-entrypoint.sh && \
+    bun install --frozen-lockfile
+ENV QUARK_DEV=1
+
+FROM runtime AS production

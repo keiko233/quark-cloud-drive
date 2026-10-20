@@ -346,4 +346,8 @@ fi
 # The single entrypoint owns everything: process manager, CDP proxy, the
 # manager API, the business API/MCP surface and the renderer attach loop.
 cd /opt/quark-app
+if [ "${QUARK_DEV:-0}" = "1" ]; then
+    echo "--- Development mode: Bun watch + stable Wine client ---"
+    exec /usr/local/bin/dev-entrypoint.sh
+fi
 exec bun run /opt/quark-app/app/src/main.ts

@@ -1,0 +1,34 @@
+services:
+  app:
+    build:
+      target: dev
+    image: quark-cloud-drive:dev
+    container_name: quark-cloud-drive-dev
+    hostname: quark-cloud-drive-dev
+
+    environment:
+      QUARK_DEV: "1"
+      QUARK_API_PORT: "8080"
+      QUARK_KV_PATH: /opt/quark-app/data/kv.sqlite3
+      LOG_LEVEL: "${LOG_LEVEL:-debug}"
+
+    volumes:
+      - .:/opt/quark-app
+      - dev-node-modules:/opt/quark-app/node_modules
+      - dev-app-data:/opt/quark-app/data
+      - ./wine-data-spark:/opt/spark-bottle/drive_c/users/wineuser/Application Data/quark-cloud-drive
+      - ./downloads:/opt/spark-bottle/drive_c/users/wineuser/Downloads
+
+    ports: !override
+      - "${SERVER_PORT:-3000}:3000"
+      - "5900:5900"
+      - "${CDP_PROXY_PORT:-9223}:9223"
+      - "8080:8080"
+
+    restart: "no"
+
+volumes:
+  dev-node-modules:
+    driver: local
+  dev-app-data:
+    driver: local

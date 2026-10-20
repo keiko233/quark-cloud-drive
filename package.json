@@ -8,7 +8,9 @@
   ],
   "scripts": {
     "start": "bun run app/src/main.ts",
-    "dev": "bun run --watch app/src/main.ts",
+    "dev": "bun run --parallel dev:server dev:client",
+    "dev:server": "bun --watch app/src/main.ts",
+    "dev:client": "bun run app/scripts/dev-client.ts",
     "test": "QUARK_KV_PATH=/tmp/quark-drive-kv.test.sqlite3 bun test",
     "test:e2e": "QUARK_E2E=1 bun test packages/drive/src/actions/list-file.e2e.test.ts packages/drive/src/actions/download.e2e.test.ts",
     "check": "tsc --noEmit"

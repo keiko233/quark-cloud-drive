@@ -11,7 +11,7 @@
 # a build artifact (gitignored); keep it under app/.
 # The runtime ships as a static binary copied out of the official image, so the
 # app keeps the Wine base and gains no second distribution.
-FROM oven/bun:1.4.3 AS bun
+FROM oven/bun:1.4.4 AS bun
 
 FROM scottyhardy/docker-wine:latest AS base
 

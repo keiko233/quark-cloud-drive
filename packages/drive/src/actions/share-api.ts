@@ -15,6 +15,11 @@ import {
  * lists its top level (each entry carries the `share_fid_token` needed to save
  * it), and `POST /share/sharepage/save` starts an async save task that is
  * polled through `GET /1/clouddrive/task`.
+ *
+ * The save body distinguishes two folder ids that are easy to confuse:
+ * `pdir_fid` is the parent of the entries *inside the share* (the share root,
+ * `"0"`, because only the top level is saved), while `to_pdir_fid` is the
+ * destination folder in the drive.
  */
 
 const SHARE_API_TIMEOUT_MS = 8_000;
@@ -242,17 +247,35 @@ export async function saveQuarkShareInBrowser(
     body: {
       pwd_id: input.pwdId,
       stoken: input.stoken,
+      // `to_pdir_fid` is the drive destination; `pdir_fid` is the parent of
+      // the saved entries within the share. Only the share's top level is
+      // saved, so that parent is always the share root ("0") — setting it to
+      // the destination silently saves nothing.
       to_pdir_fid: input.toDirFid,
-      pdir_fid: input.toDirFid,
+      pdir_fid: "0",
+      scene: "link",
       fid_list: input.entries.map((entry) => entry.fid),
       fid_token_list: input.entries.map((entry) => entry.fidToken),
-      mode: "inc_single",
     },
     timeoutMs: SHARE_API_TIMEOUT_MS,
   });
 
   const data = asObjectOrNull(envelope.data) ?? {};
   return { taskId: readString(data.task_id) ?? "", raw: data };
+}
+
+/**
+ * Fids a save task created, as reported by Quark under
+ * `data.save_as.save_as_top_fids`. Reading them here is exact, unlike matching
+ * the destination folder by name (which breaks on duplicates).
+ */
+export function readQuarkTaskSavedFids(payload: JsonObject): string[] {
+  const saveAs = asObjectOrNull(payload.save_as);
+  const topFids = saveAs?.save_as_top_fids;
+  if (!Array.isArray(topFids)) return [];
+  return topFids.filter(
+    (fid): fid is string => typeof fid === "string" && fid.length > 0,
+  );
 }
 
 function taskStatusName(status: number): string {

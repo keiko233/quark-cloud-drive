@@ -15,6 +15,8 @@ import {
   fetchQuarkShareSaveDirInBrowser,
   parseQuarkShareUrl,
   pollQuarkTaskInBrowser,
+  readQuarkTaskSavedFids,
+  saveQuarkShareInBrowser,
 } from "./share-api.ts";
 import { QuarkApiError } from "./renderer-http.ts";
 
@@ -143,6 +145,73 @@ test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async () =
   );
   assertEquals(dir.fid, "share-inbox");
   assertEquals(dir.name, "来自：分享");
+});
+
+/** Capture the renderer request so a test can assert on the exact body. */
+function capturingPage(response: { status?: number; body: unknown }): {
+  page: Page;
+  requests: Array<{ method?: string; url: string; body?: unknown }>;
+} {
+  const requests: Array<{ method?: string; url: string; body?: unknown }> = [];
+  const page = {
+    evaluate: (
+      _fn: unknown,
+      request: { method?: string; url: string; body?: unknown },
+    ) => {
+      requests.push(request);
+      return Promise.resolve({
+        status: response.status ?? 200,
+        text: JSON.stringify(response.body),
+      });
+    },
+  } as unknown as Page;
+  return { page, requests };
+}
+
+test("saveQuarkShareInBrowser posts the documented save body", async () => {
+  const { page, requests } = capturingPage({
+    body: { code: 0, data: { task_id: "task-9" } },
+  });
+  const result = await saveQuarkShareInBrowser(page, {
+    pwdId: "pwd-1",
+    stoken: "st-1",
+    toDirFid: "dest-fid",
+    entries: [
+      { fid: "fid-a", fidToken: "tok-a", name: "a.mkv", dir: false, raw: {} },
+      { fid: "fid-b", fidToken: "tok-b", name: "b.mkv", dir: false, raw: {} },
+    ],
+  });
+
+  assertEquals(result.taskId, "task-9");
+  assertEquals(
+    new URL(requests[0].url).pathname,
+    "/1/clouddrive/share/sharepage/save",
+  );
+  assertEquals(requests[0].method, "POST");
+  // `pdir_fid` is the share root, `to_pdir_fid` is the drive destination.
+  // Getting this backwards makes Quark save nothing.
+  assertEquals(requests[0].body, {
+    pwd_id: "pwd-1",
+    stoken: "st-1",
+    to_pdir_fid: "dest-fid",
+    pdir_fid: "0",
+    scene: "link",
+    fid_list: ["fid-a", "fid-b"],
+    fid_token_list: ["tok-a", "tok-b"],
+  });
+});
+
+test("readQuarkTaskSavedFids reads save_as_top_fids", () => {
+  assertEquals(
+    readQuarkTaskSavedFids({ save_as: { save_as_top_fids: ["f1", "f2"] } }),
+    ["f1", "f2"],
+  );
+  assertEquals(readQuarkTaskSavedFids({ save_as: {} }), []);
+  assertEquals(readQuarkTaskSavedFids({}), []);
+  assertEquals(
+    readQuarkTaskSavedFids({ save_as: { save_as_top_fids: ["f1", 2, ""] } }),
+    ["f1"],
+  );
 });
 
 test("pollQuarkTaskInBrowser waits for the finish status", async () => {

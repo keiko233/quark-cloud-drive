@@ -106,3 +106,17 @@ test("MCP: snake export matches helper", () => {
     assertEquals(snake(input), snakeImpl(input));
   }
 });
+
+// The two download procedures are exposed under names callers expect: the tool
+// called `download_file` must actually download, and the URL-only procedure is
+// renamed to `download_urls` so it is not mistaken for it.
+test("MCP: download tools override their tool names", () => {
+  const nameOf = (key: string): string | undefined => {
+    const proc = (clientRouter as Record<string, unknown>)[key] as {
+      "~orpc"?: { meta?: { mcp?: { name?: string } } };
+    };
+    return proc["~orpc"]?.meta?.mcp?.name;
+  };
+  assertEquals(nameOf("startDownload"), "download_file");
+  assertEquals(nameOf("downloadFile"), "download_urls");
+});

@@ -187,14 +187,18 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     path: "/download-file",
     inputStructure: "detailed",
     description: [
-      "Ask Quark for fresh signed download URLs for one `fid`. A file resolves",
-      "through `/file/download`. A folder is scanned through `/download/list`",
-      "and returns its flattened file list, each file with its own URL",
-      "(`limit` bounds how many URLs are resolved). Set `raw=true` for the",
+      "Resolve fresh signed download URLs for one `fid` without writing to",
+      "disk. A file resolves through `/file/download`. A folder is scanned",
+      "through `/download/list` and returns its flattened file list, each file",
+      "with its own URL (`limit` bounds how many URLs are resolved). The URLs",
+      "are short-lived and signed, and Quark's CDN rejects plain HTTP clients",
+      "(`412`), so this is a low-level escape hatch — use POST /download-file",
+      "(MCP `download_file`) to actually download. Set `raw=true` for the",
       "action payload.",
     ].join("\n"),
   })
-    .meta({ mcp: { tool: true } })
+    // MCP name: this one only mints URLs; `download_file` is the real download.
+    .meta({ mcp: { tool: true, name: "download_urls" } })
     .input(z.object({
       query: z.object({
         fid: z.string().min(1),
@@ -215,11 +219,12 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "built-in downloader, which writes into the app's Downloads folder (or",
       "`toDir`) and keeps a resumable `.qkdownloading` partial until it",
       "finishes. Track it with GET /download-task. Use GET /download-file",
-      "instead when you only want signed URLs and no disk write. Set",
-      "`raw=true` for the action payload.",
+      "(MCP `download_urls`) instead when you only want signed URLs and no",
+      "disk write. Set `raw=true` for the action payload.",
     ].join("\n"),
   })
-    .meta({ mcp: { tool: true } })
+    // MCP name: this is the tool callers mean by "download this file".
+    .meta({ mcp: { tool: true, name: "download_file" } })
     .input(z.object({
       body: z.object({
         fid: z.string().min(1),

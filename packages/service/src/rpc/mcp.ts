@@ -41,13 +41,15 @@ const SERVER_INSTRUCTIONS = [
   "- **Concurrency is 1**: mutating tools are served serially, not in parallel.",
   "- **Writes require login**: downloads, share imports, and capacity reads",
   "  need an authenticated session. Guard with `login_status`.",
-  "- **Two downloads**: `download_file` returns a signed URL and never writes",
-  "  to disk (the URL expires, so fetch it promptly). `start_download` really",
-  "  downloads: it queues the `fid` on the app's own downloader, which writes",
-  "  into the app's Downloads folder (`toDir` overrides it). Track it with",
-  "  `download_task_list` and stop it with `update_download_task`",
-  "  (`pause`/`resume`/`cancel`; `cancel` also deletes the partial file).",
-  "- **Folder downloads are unbounded**: `start_download` on a folder pulls the",
+  "- **Downloads**: `download_file` really downloads — it queues the `fid` on",
+  "  the app's own downloader, which writes into the app's Downloads folder",
+  "  (`toDir` overrides it). Track it with `download_task_list` and stop it",
+  "  with `update_download_task` (`pause`/`resume`/`cancel`; `cancel` also",
+  "  deletes the partial file). `download_urls` is the low-level variant that",
+  "  only mints short-lived signed URLs and writes nothing to disk; plain HTTP",
+  "  clients cannot fetch those URLs (Quark's CDN answers `412`), so prefer",
+  "  `download_file`.",
+  "- **Folder downloads are unbounded**: `download_file` on a folder pulls the",
   "  whole subtree, so check the size first.",
 ].join("\n");
 
@@ -114,8 +116,11 @@ function registerRouterTools(mcp: McpServer, router: AnyRouter): number {
         const def = proc["~orpc"];
         const meta = def?.meta;
         if (!isMcpTool(meta)) continue;
-        // Tool name: snake_case join of the router path + key.
-        const name = [...path, key].map(snake).join("_");
+        // Tool name: `meta.mcp.name` when the contract overrides it (used to
+        // make the download tools read the way callers expect), otherwise a
+        // snake_case join of the router path + key.
+        const override = (meta as McpToolMeta).mcp?.name;
+        const name = override ?? [...path, key].map(snake).join("_");
         const description = def?.route?.description;
         const { inputSchema, toInput } = mcpArgsFor(
           def?.inputSchema,

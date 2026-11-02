@@ -187,7 +187,10 @@ Full list in `.env.example`; every default lives in
   returns their paths. This is the app's engine, distinct from the cloud
   `/task-list`.
 - **MCP** — `/mcp` exposes the client contract (including `manager_*`) as MCP
-  tools over Streamable HTTP.
+  tools over Streamable HTTP. Tool names come from the contract; the two
+  download procedures are renamed so the obvious name does the obvious thing:
+  `download_file` actually downloads (POST `/download-file`), while
+  `download_urls` only mints signed URLs (GET `/download-file`).
 - **noVNC** — `/vnc` page with a WebSocket→VNC proxy under `/vnc/ws`. The
   client ships in the Bun dependency tree (`@novnc/novnc`); there is no
   websockify sidecar or separate `:6080` listener. Set `NOVNC_STATIC_DIR` only

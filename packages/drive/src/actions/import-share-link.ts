@@ -12,6 +12,7 @@ import {
   pollQuarkTaskInBrowser,
   QUARK_TASK_STATUS_FAIL,
   QUARK_TASK_STATUS_FINISH,
+  readQuarkTaskSavedFids,
   saveQuarkShareInBrowser,
 } from "./share-api.ts";
 
@@ -24,9 +25,9 @@ export interface ImportShareLinkOptions {
 }
 
 /**
- * Best-effort mapping of the saved share entries to the fids Quark created in
- * the destination folder. Quark's save API only echoes a task id, so the
- * destination is listed once and matched by name.
+ * Fallback mapping of the saved share entries to the fids Quark created, used
+ * only when the save task did not report them: the destination is listed once
+ * and matched by name. Prefer `readQuarkTaskSavedFids`, which is exact.
  */
 async function matchSavedFids(
   page: Awaited<ReturnType<typeof getQuarkPage>>,
@@ -98,11 +99,16 @@ export async function importShareLink(
     throw new QuarkApiError("Quark failed to save the share");
   }
 
-  const savedFids = await matchSavedFids(
-    page,
-    toDirFid,
-    detail.entries.map((entry) => entry.name),
-  );
+  // The task payload carries the fids Quark created; the name-based listing is
+  // only a fallback for when the task did not report them.
+  const taskSavedFids = task === null ? [] : readQuarkTaskSavedFids(task.raw);
+  const savedFids = taskSavedFids.length > 0
+    ? taskSavedFids
+    : await matchSavedFids(
+      page,
+      toDirFid,
+      detail.entries.map((entry) => entry.name),
+    );
   // A save changes used capacity.
   userInfoCache.delete("s");
 

@@ -9,22 +9,14 @@ services:
     container_name: quark-cloud-drive
     hostname: quark-cloud-drive
     platform: linux/amd64
-
-    devices:
-      - /dev/dri:/dev/dri # Intel/AMD GPU
+    init: true
 
     environment:
-      # Set before startup, e.g. MESA_LOADER_DRIVER_OVERRIDE=iris or radeonsi.
+      QUARK_DISPLAY: "${QUARK_DISPLAY:-xvfb}"
       MESA_LOADER_DRIVER_OVERRIDE: "${MESA_LOADER_DRIVER_OVERRIDE:-}"
-
-      # Wine runtime used for the bundled Quark build.
       QUARK_RUNTIME: "${QUARK_RUNTIME:-spark}"
-
-      # One process owns everything: the manager is embedded and mounted under
-      # /manager on the same port. Set QUARK_MANAGER_MODE=http to point a
-      # host-side instance at another service's manager URL instead.
-      QUARK_MANAGER_MODE: "${QUARK_MANAGER_MODE:-embedded}"
-      SERVER_PORT: "${SERVER_PORT:-3000}"
+      SERVER_PORT: "3000"
+      CDP_PROXY_PORT: "9223"
       QUARK_AUTOSTART: "${QUARK_AUTOSTART:-true}"
 
       # The KV store (task history + runtime settings) lives in the app-data volume.
@@ -39,10 +31,6 @@ services:
     ports:
       # Public API + manager API + OpenAPI docs + MCP + noVNC page.
       - "${SERVER_PORT:-3000}:3000"
-      # Raw VNC (x11vnc).
-      - "5900:5900"
-      # CDP proxy: DevTools page and host-side development.
-      - "${CDP_PROXY_PORT:-9223}:9223"
     volumes:
       # Spark/AUR runtime data. This is the default runtime because the current
       # 6.6.7 installer crashes before creating a visible Electron window.

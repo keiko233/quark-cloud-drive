@@ -1,31 +1,30 @@
-// Implementation of the shared clientContract (packages/contract). Mutating
-// actions run through the single-slot OperationQueue. Every business procedure
-// is a direct Quark JSON API call issued from the logged-in renderer; no action
-// drives the Quark UI, so business responses are plain JSON (no SSE).
-
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 import { clientContract } from "@quark/contract/client";
 import type { ClientEvent } from "@quark/contract/schemas";
 import {
-  downloadFile,
-  downloadTaskList,
-  fileInfo,
-  importShareLink,
-  listFile,
+  Channel,
+  getOperationQueue,
+  getRuntimeConfig,
+  readLoginStateRaw,
+  updateRuntimeConfig,
+  listDownloads,
+  getFile,
+  saveShare,
+  getShareImport,
+  isQuarkLoginError,
+  QuarkApiError,
+  listFiles,
   loginStatus,
   startDownload,
-  taskList,
-  updateDownloadTask,
-  updateTask,
-  userInfo,
+  listCloudTasks,
+  controlDownloads,
+  controlCloudTasks,
+  getAccount,
 } from "@quark/drive";
-import { getBrowser, getOperationQueue } from "@quark/drive";
-import { Channel } from "@quark/drive";
-import { getManager } from "@quark/manager";
+import { processManager, streamManagerEvents } from "@quark/manager";
 import { loginQRCode } from "../session/login-qrcode.ts";
 import { sleeper } from "./runtime.ts";
-import { assertOperationAllowed } from "../guard.ts";
-import { getRuntimeConfig, updateRuntimeConfig } from "@quark/drive";
+import { withDriveSession } from "../guard.ts";
 import {
   clearLoggedOutStopMarker,
   clearManualStop,
@@ -33,13 +32,20 @@ import {
   makeRuntimeStatus,
   markManualStop,
 } from "../monitor/status.ts";
-import { readLoginStateRaw } from "@quark/drive";
 
 const base = implement(clientContract).use(async ({ next, errors }) => {
   try {
     return await next();
   } catch (error) {
-    if (typeof (error as { code?: unknown }).code === "string") throw error;
+    if (error instanceof ORPCError) throw error;
+    if (isQuarkLoginError(error)) {
+      throw errors.UNAUTHORIZED({
+        message: "Sign in to Quark with login_qr_code (GET /login/qrcode) and retry.",
+      });
+    }
+    if (error instanceof QuarkApiError) {
+      throw errors.BAD_GATEWAY({ message: error.message });
+    }
     throw errors.INTERNAL_SERVER_ERROR({
       message: error instanceof Error ? error.message : String(error),
     });
@@ -54,7 +60,7 @@ export const clientRouter = base.router({
   ),
 
   status: base.status.handler(async () => {
-    const process = await getManager().status();
+    const process = await processManager.status();
     const status = await sleeper.status() ?? await getSavedRuntimeStatus();
     const config = await getRuntimeConfig();
     if (status) {
@@ -92,10 +98,6 @@ export const clientRouter = base.router({
     });
   }),
 
-  version: base.version.handler(() => ({ version: getBrowser().version() })),
-
-  queueStatus: base.queueStatus.handler(() => getOperationQueue().status()),
-
   events: base.events.handler(async function* ({ signal }) {
     // Merge every event source into one channel, then relay it out as SSE.
     const merged = new Channel<ClientEvent>();
@@ -123,18 +125,12 @@ export const clientRouter = base.router({
       ),
     ];
 
-    // Mirror the server's process stream into the same channel.
-    const serverEvents = await getManager().events({ signal });
-    const mirrorServer = (async () => {
-      try {
-        for await (const ev of serverEvents) {
-          if (ev.type !== "process") continue;
-          merged.push({ type: "process", state: ev.state, source: "server" });
-        }
-      } catch {
-        // server stream ended/aborted
-      }
-    })();
+    unsubscribes.push(processManager.events.subscribe("process", ({ state }) =>
+      merged.push({ type: "process", state, source: "server" })
+    ));
+    const onAbort = () => merged.close();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
 
     try {
       while (true) {
@@ -145,137 +141,89 @@ export const clientRouter = base.router({
     } finally {
       merged.close();
       for (const unsub of unsubscribes) unsub();
-      await mirrorServer.catch(() => {});
+      signal?.removeEventListener("abort", onAbort);
     }
   }),
 
-  loginQRCode: base.loginQRCode.handler(async () => {
-    const bytes = await loginQRCode();
+  loginQRCode: base.loginQRCode.handler(async ({ signal }) => {
+    const bytes = await loginQRCode(signal);
     return new File([Uint8Array.from(bytes)], "login-qrcode.png", {
       type: "image/png",
     });
   }),
 
   loginStatus: base.loginStatus.handler(({ input }) =>
-    loginStatus({ raw: input.query?.raw })
+    withDriveSession(() => loginStatus(input.query), { login: false })
   ),
-  userInfo: base.userInfo.handler(async ({ input }) => {
-    await assertOperationAllowed("userInfo");
-    return await userInfo({ raw: input.query?.raw });
-  }),
+  getAccount: base.getAccount.handler(({ input }) =>
+    withDriveSession(() => getAccount(input.query))
+  ),
+  listFiles: base.listFiles.handler(({ input }) =>
+    withDriveSession(() => listFiles(input.query))
+  ),
+  getFile: base.getFile.handler(({ input }) =>
+    withDriveSession(() => getFile(input.query))
+  ),
+  startDownload: base.startDownload.handler(({ input, signal }) =>
+    withDriveSession(() => getOperationQueue().run(
+      "startDownload", { signal }, () => startDownload(input.body),
+    ))
+  ),
+  listDownloads: base.listDownloads.handler(({ input }) =>
+    withDriveSession(() => listDownloads(input.query))
+  ),
+  controlDownloads: base.controlDownloads.handler(({ input, signal }) =>
+    withDriveSession(() => getOperationQueue().run(
+      "controlDownloads", { signal }, () => controlDownloads(input.body),
+    ))
+  ),
+  listCloudTasks: base.listCloudTasks.handler(({ input }) =>
+    withDriveSession(() => listCloudTasks(input.query))
+  ),
+  controlCloudTasks: base.controlCloudTasks.handler(({ input, signal }) =>
+    withDriveSession(() => getOperationQueue().run(
+      "controlCloudTasks", { signal }, () => controlCloudTasks(input.body),
+    ))
+  ),
+  saveShare: base.saveShare.handler(({ input, signal }) =>
+    withDriveSession(() => getOperationQueue().run(
+      "saveShare", { signal }, () => saveShare(input.body),
+    ))
+  ),
+  getShareImport: base.getShareImport.handler(({ input }) =>
+    withDriveSession(() => getShareImport(input.query))
+  ),
 
-  listFile: base.listFile.handler(async ({ input }) => {
-    await assertOperationAllowed("listFile");
-    return await listFile({
-      fid: input.query?.fid,
-      raw: input.query?.raw,
-    });
-  }),
-
-  fileInfo: base.fileInfo.handler(async ({ input }) => {
-    await assertOperationAllowed("fileInfo");
-    return await fileInfo({
-      fid: input.query.fid,
-      raw: input.query.raw,
-    });
-  }),
-
-  downloadFile: base.downloadFile.handler(async ({ input }) => {
-    await assertOperationAllowed("downloadFile");
-    return await downloadFile(input.query.fid, {
-      limit: input.query.limit,
-      raw: input.query.raw,
-    });
-  }),
-
-  startDownload: base.startDownload.handler(async ({ input }) => {
-    await assertOperationAllowed("startDownload");
-    return await startDownload({
-      fid: input.body.fid,
-      toDir: input.body.toDir,
-      raw: input.body.raw,
-    });
-  }),
-
-  downloadTaskList: base.downloadTaskList.handler(async ({ input }) => {
-    await assertOperationAllowed("downloadTask");
-    return await downloadTaskList({ raw: input.query?.raw });
-  }),
-
-  updateDownloadTask: base.updateDownloadTask.handler(async ({ input }) => {
-    await assertOperationAllowed("downloadTask");
-    return await updateDownloadTask({
-      taskIds: input.body.taskIds,
-      operation: input.body.operation,
-      raw: input.body.raw,
-    });
-  }),
-
-  taskList: base.taskList.handler(async ({ input }) => {
-    await assertOperationAllowed("listTask");
-    return await taskList({
-      status: input.query?.status,
-      type: input.query?.type,
-      size: input.query?.size,
-      cursor: input.query?.cursor,
-      raw: input.query?.raw,
-    });
-  }),
-
-  updateTask: base.updateTask.handler(async ({ input }) => {
-    await assertOperationAllowed("updateTask");
-    return await updateTask({
-      taskIds: input.body.taskIds,
-      operation: input.body.operation,
-      raw: input.body.raw,
-    });
-  }),
-
-  importShareLink: base.importShareLink.handler(async ({ input }) => {
-    await assertOperationAllowed("importShareLink");
-    return await importShareLink(input.body.url, {
-      passcode: input.body.passcode,
-      toFid: input.body.toFid,
-      raw: input.body.raw,
-    });
-  }),
-
-  // Manager surface — thin forwards to @quark/manager (embedded, or a remote
-  // manager over HTTP). Enables API + MCP consumers to control the Quark
-  // process through this service.
   manager: base.manager.router({
-    healthz: base.manager.healthz.handler(() => getManager().healthz()),
-
-    status: base.manager.status.handler(() => getManager().status()),
+    status: base.manager.status.handler(() => processManager.status()),
 
     start: base.manager.start.handler(async () => {
       await clearManualStop();
       await clearLoggedOutStopMarker();
       sleeper.clearDecision();
-      return await getManager().start();
+      return await processManager.start();
     }),
 
     stop: base.manager.stop.handler(async () => {
       // An explicit stop must stick: without this marker the reconnect loop
       // would wake Quark again within seconds.
       await markManualStop();
-      return await getManager().stop();
+      return await processManager.stop();
     }),
 
     restart: base.manager.restart.handler(async () => {
       await clearManualStop();
       await clearLoggedOutStopMarker();
       sleeper.clearDecision();
-      return await getManager().restart();
+      return await processManager.restart();
     }),
 
-    minimize: base.manager.minimize.handler(() => getManager().minimize()),
+    minimize: base.manager.minimize.handler(() => processManager.minimize()),
 
-    restore: base.manager.restore.handler(() => getManager().restore()),
+    restore: base.manager.restore.handler(() => processManager.restore()),
 
     events: base.manager.events.handler(async function* ({ signal }) {
-      const serverEvents = await getManager().events({ signal });
-      yield* serverEvents;
+      yield* streamManagerEvents(processManager, { signal });
     }),
   }),
 });

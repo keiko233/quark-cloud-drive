@@ -1,4 +1,5 @@
-import type { Page } from "playwright";
+import type { QuarkShareImport } from "@quark/contract/schemas";
+import type { QuarkTransport } from "./http.ts";
 import {
   asObjectOrNull,
   buildQuarkApiUrl,
@@ -6,7 +7,7 @@ import {
   readFiniteNumber,
   readString,
   requestQuarkApi,
-} from "./renderer-http.ts";
+} from "./http.ts";
 
 /**
  * Quark share APIs, API only.
@@ -14,7 +15,7 @@ import {
  * `POST /share/sharepage/token` unlocks a share, `GET /share/sharepage/detail`
  * lists its top level (each entry carries the `share_fid_token` needed to save
  * it), and `POST /share/sharepage/save` starts an async save task that is
- * polled through `GET /1/clouddrive/task`.
+ * checked through `GET /1/clouddrive/task`.
  *
  * The save body distinguishes two folder ids that are easy to confuse:
  * `pdir_fid` is the parent of the entries *inside the share* (the share root,
@@ -25,12 +26,6 @@ import {
 const SHARE_API_TIMEOUT_MS = 8_000;
 const SHARE_DETAIL_PAGE_SIZE = 50;
 const SHARE_DETAIL_MAX_PAGES = 100;
-const SHARE_TASK_POLL_INTERVAL_MS = 1_000;
-const SHARE_TASK_POLL_TIMEOUT_MS = 60_000;
-
-export const QUARK_TASK_STATUS_FINISH = 2;
-export const QUARK_TASK_STATUS_FAIL = 3;
-
 type JsonObject = Record<string, unknown>;
 
 export interface QuarkShareIdentity {
@@ -49,13 +44,6 @@ export interface QuarkShareEntry {
 export interface QuarkShareSaveDir {
   fid: string;
   name: string;
-  raw: JsonObject;
-}
-
-export interface QuarkShareTaskResult {
-  taskId: string;
-  status: number;
-  statusName: string;
   raw: JsonObject;
 }
 
@@ -141,11 +129,11 @@ export function buildQuarkTaskPollUrl(
   });
 }
 
-export async function fetchQuarkShareTokenInBrowser(
-  page: Page,
+export async function fetchQuarkShareToken(
+  transport: QuarkTransport,
   identity: QuarkShareIdentity,
 ): Promise<{ stoken: string; raw: JsonObject }> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     method: "POST",
     url: buildQuarkShareTokenUrl(),
     body: {
@@ -177,8 +165,8 @@ function parseShareEntry(value: unknown): QuarkShareEntry {
   return { fid, fidToken, name, dir: entry.dir === true, raw: entry };
 }
 
-export async function fetchQuarkShareDetailInBrowser(
-  page: Page,
+export async function fetchQuarkShareDetail(
+  transport: QuarkTransport,
   pwdId: string,
   stoken: string,
 ): Promise<
@@ -189,7 +177,7 @@ export async function fetchQuarkShareDetailInBrowser(
   const seen = new Set<string>();
 
   for (let pageNumber = 1; pageNumber <= SHARE_DETAIL_MAX_PAGES; pageNumber++) {
-    const envelope = await requestQuarkApi(page, {
+    const envelope = await requestQuarkApi(transport, {
       url: buildQuarkShareDetailUrl(pwdId, stoken, pageNumber),
       timeoutMs: SHARE_API_TIMEOUT_MS,
     });
@@ -216,11 +204,11 @@ export async function fetchQuarkShareDetailInBrowser(
 }
 
 /** Quark's default save location for a share (`来自：分享`). */
-export async function fetchQuarkShareSaveDirInBrowser(
-  page: Page,
+export async function fetchQuarkShareSaveDir(
+  transport: QuarkTransport,
   pwdId?: string,
 ): Promise<QuarkShareSaveDir> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url: buildQuarkShareDirUrl(pwdId),
     timeoutMs: SHARE_API_TIMEOUT_MS,
   });
@@ -232,8 +220,8 @@ export async function fetchQuarkShareSaveDirInBrowser(
   return { fid, name: readString(data.pdir_name) ?? "", raw: data };
 }
 
-export async function saveQuarkShareInBrowser(
-  page: Page,
+export async function saveQuarkShare(
+  transport: QuarkTransport,
   input: {
     pwdId: string;
     stoken: string;
@@ -241,7 +229,7 @@ export async function saveQuarkShareInBrowser(
     entries: QuarkShareEntry[];
   },
 ): Promise<QuarkShareSaveResult> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     method: "POST",
     url: buildQuarkShareSaveUrl(),
     body: {
@@ -261,7 +249,11 @@ export async function saveQuarkShareInBrowser(
   });
 
   const data = asObjectOrNull(envelope.data) ?? {};
-  return { taskId: readString(data.task_id) ?? "", raw: data };
+  const taskId = readString(data.task_id)?.trim();
+  if (!taskId) {
+    throw new QuarkApiError("Quark did not return a share save task ID; submission could not be confirmed");
+  }
+  return { taskId, raw: data };
 }
 
 /**
@@ -278,59 +270,34 @@ export function readQuarkTaskSavedFids(payload: JsonObject): string[] {
   );
 }
 
-function taskStatusName(status: number): string {
+/** One upstream status lookup. Calling this never submits another save. */
+export async function readQuarkShareTask(
+  transport: QuarkTransport,
+  taskId: string,
+  retryIndex = 0,
+): Promise<QuarkShareImport> {
+  const envelope = await requestQuarkApi(transport, {
+    url: buildQuarkTaskPollUrl(taskId, retryIndex),
+    timeoutMs: SHARE_API_TIMEOUT_MS,
+  });
+  const data = asObjectOrNull(envelope.data) ?? {};
+  const status = readFiniteNumber(data.status);
+  const result = { taskId, savedFids: [] as string[], nextRetryIndex: null, error: null };
   switch (status) {
     case 0:
-      return "todo";
     case 1:
-      return "running";
-    case QUARK_TASK_STATUS_FINISH:
-      return "finish";
-    case QUARK_TASK_STATUS_FAIL:
-      return "fail";
+      return { ...result, status: "pending", nextRetryIndex: retryIndex + 1 };
+    case 2:
+      return { ...result, status: "completed", savedFids: readQuarkTaskSavedFids(data) };
+    case 3:
+      return {
+        ...result,
+        status: "failed",
+        error: readString(data.message) ?? readString(data.error_msg) ?? "Quark failed to save the share",
+      };
     case 4:
-      return "pause";
+      return { ...result, status: "paused" };
     default:
-      throw new QuarkApiError(`task status ${status} is not recognized`);
+      throw new QuarkApiError("Quark returned an invalid share task status");
   }
-}
-
-/** Poll a save task until it finishes. */
-export async function pollQuarkTaskInBrowser(
-  page: Page,
-  taskId: string,
-): Promise<QuarkShareTaskResult> {
-  if (taskId === "") {
-    throw new QuarkApiError("save task had no task id");
-  }
-
-  const deadline = Date.now() + SHARE_TASK_POLL_TIMEOUT_MS;
-  let retryIndex = 0;
-  let payload: JsonObject = {};
-  let status = 0;
-
-  while (
-    status !== QUARK_TASK_STATUS_FINISH && status !== QUARK_TASK_STATUS_FAIL
-  ) {
-    if (Date.now() >= deadline) {
-      throw new QuarkApiError("save task did not finish in time");
-    }
-    await new Promise((resolve) =>
-      setTimeout(resolve, SHARE_TASK_POLL_INTERVAL_MS)
-    );
-    const envelope = await requestQuarkApi(page, {
-      url: buildQuarkTaskPollUrl(taskId, retryIndex),
-      timeoutMs: SHARE_API_TIMEOUT_MS,
-    });
-    retryIndex++;
-    payload = asObjectOrNull(envelope.data) ?? payload;
-    status = readFiniteNumber(payload.status) ?? status;
-  }
-
-  return {
-    taskId,
-    status,
-    statusName: taskStatusName(status),
-    raw: payload,
-  };
 }

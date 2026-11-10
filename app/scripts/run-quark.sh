@@ -67,9 +67,8 @@ else
     echo "VAAPI driver  : (not detected)"
 fi
 
-# Try hardware-accelerated Xorg (modesetting + DRI3) so Wine's wined3d can
-# use the Intel GPU via Mesa/iris.  Fall back to Xvfb if DRI card is absent
-# or Xorg fails to start.
+# Use a virtual display by default. QUARK_DISPLAY=xorg opts into hardware
+# acceleration, with an Xvfb fallback if the GPU or Xorg is unavailable.
 #
 # Key fixes vs. the previous (white-screen) attempt:
 #   - MESA_GL_VERSION_OVERRIDE is unset for real hardware (it was a llvmpipe
@@ -138,7 +137,7 @@ EndSection
 XORGEOF
 
 _use_hw_xorg=0
-if [ -n "$_gpu_busid" ]; then
+if [ "${QUARK_DISPLAY:-xvfb}" = "xorg" ] && [ -n "$_gpu_busid" ]; then
     echo "--- Starting Xorg (modesetting/DRI3, pinned to $_gpu_busid) ---"
     Xorg :0 -noreset -nolisten tcp -config /tmp/xorg-quark.conf \
          -logfile /tmp/Xorg.0.log &
@@ -162,7 +161,7 @@ if [ -n "$_gpu_busid" ]; then
 fi
 
 if [ "$_use_hw_xorg" = "0" ]; then
-    echo "--- Starting Xvfb (software fallback) ---"
+    echo "--- Starting Xvfb (virtual display) ---"
     # A DRI device may exist even when Xorg cannot create a hardware-backed
     # display (for example on a headless K3s node). Do not carry the hardware
     # Mesa override into Xvfb: Chromium's Wine/ANGLE GPU process can start,
@@ -173,7 +172,7 @@ if [ "$_use_hw_xorg" = "0" ]; then
 fi
 sleep 2
 echo "--- Starting x11vnc on :5900 ---"
-x11vnc -display :0 -forever -nopw -rfbport 5900 -cursor most -quiet &
+x11vnc -display :0 -forever -nopw -localhost -rfbport 5900 -cursor most -quiet &
 
 # noVNC is served by the Bun app on :3000/vnc and connects to the same-origin
 # /vnc/ws bridge. There is no standalone websockify listener or :6080 port.
@@ -270,12 +269,12 @@ fi
 # --disable-backgrounding-occluded-windows, --disable-renderer-backgrounding)
 # are intentionally NOT set: when the manager minimizes the Quark window we
 # want Chromium to actually throttle background tabs to free up CPU.
+# Leave Chromium's renderer count and JS heap at its defaults. The fresh
+# login flow opens several renderers and can fail under the old hard caps.
 QUARK_EXTRA_ARGS="
     $_gpu_flags
     --disable-dev-shm-usage
-    --renderer-process-limit=1
     --disable-background-networking
-    --js-flags=--max-old-space-size=256
 "
 
 echo "--- Launching server (API on :${SERVER_PORT:-3000}) ---"

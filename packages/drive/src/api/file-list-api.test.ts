@@ -3,19 +3,19 @@ import {
   rejects as assertRejects,
 } from "node:assert/strict";
 import { test } from "bun:test";
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   buildQuarkFileListUrl,
   collectQuarkFileList,
   FILE_LIST_API_PAGE_SIZE,
   formatQuarkFileSize,
   formatQuarkUpdatedAt,
-  listQuarkFolderInBrowser,
+  listQuarkFolder,
   mapQuarkFileListItem,
   type QuarkFileListApiItem,
   type QuarkFileListApiPage,
 } from "./file-list-api.ts";
-import { QuarkApiError } from "./renderer-http.ts";
+import { QuarkApiError } from "./http.ts";
 
 const updatedAt = Date.UTC(2026, 4, 26, 13, 2) / 1000;
 
@@ -67,27 +67,13 @@ function apiPayload(items: unknown[]): Record<string, unknown> {
   };
 }
 
-function fakePage(payloads: Record<string, Record<string, unknown>>): Page {
-  return {
-    evaluate: (
-      _callback: unknown,
-      argument?: unknown,
-    ): Promise<unknown> => {
-      if (
-        argument && typeof argument === "object" && "url" in argument
-      ) {
-        const url = new URL(String((argument as { url: string }).url));
-        const fid = url.searchParams.get("pdir_fid") ?? "0";
-        const payload = payloads[fid];
-        if (!payload) throw new Error(`unexpected fid ${fid}`);
-        return Promise.resolve({
-          status: 200,
-          text: JSON.stringify(payload),
-        });
-      }
-      return Promise.resolve("Asia/Shanghai");
-    },
-  } as unknown as Page;
+function fakeTransport(payloads: Record<string, Record<string, unknown>>): QuarkTransport {
+  return async (request) => {
+    const fid = new URL(request.url).searchParams.get("pdir_fid") ?? "0";
+    const payload = payloads[fid];
+    if (!payload) throw new Error(`unexpected fid ${fid}`);
+    return { status: 200, text: JSON.stringify(payload) };
+  };
 }
 
 test("buildQuarkFileListUrl uses the stable API contract", () => {
@@ -144,8 +130,8 @@ test("collectQuarkFileList rejects incomplete responses", async () => {
   );
 });
 
-test("listQuarkFolderInBrowser lists by fid", async () => {
-  const page = fakePage({
+test("listQuarkFolder lists by fid", async () => {
+  const page = fakeTransport({
     "0": apiPayload([
       {
         fid: "folder-fid",
@@ -160,7 +146,7 @@ test("listQuarkFolderInBrowser lists by fid", async () => {
     ]),
   });
 
-  const direct = await listQuarkFolderInBrowser(page, "folder-fid", {
+  const direct = await listQuarkFolder(page, "folder-fid", {
     raw: true,
   });
   assertEquals(direct.fid, "folder-fid");
@@ -168,7 +154,7 @@ test("listQuarkFolderInBrowser lists by fid", async () => {
   assertEquals(direct.raw?.fid, "folder-fid");
   assertEquals((direct.raw?.items as unknown[]).length, 1);
 
-  const root = await listQuarkFolderInBrowser(page, undefined, { raw: true });
+  const root = await listQuarkFolder(page, undefined, { raw: true });
   assertEquals(root.fid, "0");
   assertEquals(root.items.map((item) => item.fid), [
     "folder-fid",

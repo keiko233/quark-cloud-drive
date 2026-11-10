@@ -3,13 +3,13 @@ import type {
   QuarkTaskStatusFilter,
 } from "@quark/contract/schemas";
 import { log } from "@quark/config";
-import { getQuarkPage } from "./browser-session.ts";
+import { getQuarkTransport } from "./quark-session.ts";
 import {
-  fetchQuarkTaskCountsInBrowser,
-  fetchQuarkTaskPageInBrowser,
-} from "./task-api.ts";
+  fetchQuarkTaskCounts,
+  fetchQuarkTaskPage,
+} from "../api/task-api.ts";
 
-export interface TaskListInput {
+export interface ListCloudTasksInput {
   status?: QuarkTaskStatusFilter;
   /** CSV of task-type names (`offline_download`) or numeric codes. */
   type?: string;
@@ -22,24 +22,24 @@ export interface TaskListInput {
  * Read Quark's cloud task list plus per-status counts. Both come from the
  * JSON task API, so the transport panel is never opened and no DOM is read.
  */
-export async function taskList(
-  input: TaskListInput = {},
+export async function listCloudTasks(
+  input: ListCloudTasksInput = {},
 ): Promise<QuarkTaskList> {
   const includeRaw = input.raw === true;
-  const page = await getQuarkPage();
+  const transport = getQuarkTransport();
 
   const [listPage, counts] = await Promise.all([
-    fetchQuarkTaskPageInBrowser(page, {
+    fetchQuarkTaskPage(transport, {
       status: input.status,
       type: input.type,
       size: input.size,
       cursor: input.cursor,
     }),
-    fetchQuarkTaskCountsInBrowser(page, input.type),
+    fetchQuarkTaskCounts(transport, input.type),
   ]);
 
   log.debug(
-    `taskList: ${listPage.tasks.length} task(s), ${counts.counts.total} counted`,
+    `listCloudTasks: ${listPage.tasks.length} task(s), ${counts.counts.total} counted`,
   );
 
   return {

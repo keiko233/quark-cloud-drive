@@ -1,51 +1,54 @@
-import type { GuardOperation } from "@quark/contract/schemas";
 import { ORPCError } from "@orpc/server";
-import { getManager } from "@quark/manager";
+import { log } from "@quark/config";
+import { processManager } from "@quark/manager";
 import { readLoginStateRaw } from "@quark/drive";
-import { getRuntimeConfig } from "@quark/drive";
+import { autoWakeBlockReason, ensureQuarkAwake } from "./monitor/wake.ts";
+import { connect, hasAttachedSession } from "./session/connect.ts";
 
-export class GuardError extends ORPCError<"FORBIDDEN", unknown> {
-  constructor(message: string) {
-    super("FORBIDDEN", { message });
-    this.name = "GuardError";
+/** Shared policy for REST and MCP; only real requests can wake a sleeping app. */
+async function requireSession({ login = true } = {}): Promise<void> {
+  const blocked = await autoWakeBlockReason();
+  if (blocked) throw new ORPCError("SERVICE_UNAVAILABLE", { message: blocked });
+
+  try {
+    if (!hasAttachedSession()) {
+      await ensureQuarkAwake();
+      await connect();
+    }
+  } catch (error) {
+    log.warn("Quark session not ready:", error);
+    throw new ORPCError("SERVICE_UNAVAILABLE", {
+      message: "Quark session is not ready; check /status and retry.",
+    });
+  }
+
+  if (login && readLoginStateRaw() !== "logged_in") {
+    throw new ORPCError("UNAUTHORIZED", {
+      message: "Sign in to Quark with login_qr_code (GET /login/qrcode) and retry.",
+    });
   }
 }
 
-export class NotReadyError extends ORPCError<"SERVICE_UNAVAILABLE", unknown> {
-  constructor(message: string) {
-    super("SERVICE_UNAVAILABLE", { message });
-    this.name = "NotReadyError";
-  }
+let activeRequests = 0;
+
+export function hasDriveRequests(): boolean {
+  return activeRequests > 0;
 }
 
-/**
- * Central policy gate for browser operations. Lifecycle and login-help
- * endpoints intentionally do not use this gate, so a logged-out instance can
- * still be started and receive a QR code.
- */
-export async function assertOperationAllowed(
-  operation: GuardOperation,
-): Promise<void> {
-  const process = await getManager().status();
-  if (process.state === "starting") {
-    throw new NotReadyError("Quark is starting; retry when status is running");
-  }
-  if (!process.alive || process.state === "stopped") {
-    throw new NotReadyError("Quark is stopped; retry after it is started");
-  }
-
-  const config = await getRuntimeConfig();
-  if (!config.requireLoginFor.includes(operation)) return;
-
-  const login = readLoginStateRaw();
-  if (login === "logged_out") {
-    throw new GuardError(
-      `operation "${operation}" is blocked because Quark is not logged in`,
-    );
-  }
-  if (login === "unknown") {
-    throw new GuardError(
-      `operation "${operation}" is blocked because login state is unknown`,
-    );
+export async function withDriveSession<T>(
+  run: () => Promise<T>,
+  options?: { login?: boolean },
+): Promise<T> {
+  activeRequests++;
+  try {
+    await requireSession(options);
+    processManager.markActivity();
+    try {
+      return await run();
+    } finally {
+      processManager.markActivity();
+    }
+  } finally {
+    activeRequests--;
   }
 }

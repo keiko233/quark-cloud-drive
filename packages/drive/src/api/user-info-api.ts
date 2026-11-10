@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   asObjectOrNull,
   buildQuarkApiUrl,
@@ -6,7 +6,7 @@ import {
   QuarkApiError,
   readFiniteNumber,
   requestQuarkApi,
-} from "./renderer-http.ts";
+} from "./http.ts";
 
 const USER_INFO_API_TIMEOUT_MS = 8_000;
 
@@ -84,10 +84,10 @@ export function parseQuarkMemberData(
   };
 }
 
-export async function fetchQuarkMemberInBrowser(
-  page: Page,
+export async function fetchQuarkMember(
+  transport: QuarkTransport,
 ): Promise<QuarkMemberInfo> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url: buildQuarkUserInfoUrl(),
     timeoutMs: USER_INFO_API_TIMEOUT_MS,
   });
@@ -99,11 +99,11 @@ export async function fetchQuarkMemberInBrowser(
  * renderer session is not logged in. Capacity is not validated here, so this
  * never throws for a logged-out session.
  */
-export async function probeQuarkLoginInBrowser(
-  page: Page,
+export async function probeQuarkLogin(
+  transport: QuarkTransport,
 ): Promise<{ loggedIn: boolean; raw: JsonObject }> {
   try {
-    const envelope = await requestQuarkApi(page, {
+    const envelope = await requestQuarkApi(transport, {
       url: buildQuarkUserInfoUrl(),
       timeoutMs: USER_INFO_API_TIMEOUT_MS,
     });

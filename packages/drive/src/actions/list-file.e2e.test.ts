@@ -7,7 +7,7 @@ import { chromium } from "playwright";
 const enabled = process.env.QUARK_E2E === "1";
 const apiUrl = process.env.QUARK_API_URL ?? process.env.CLIENT_URL ??
   "http://127.0.0.1:3000";
-const cdpUrl = process.env.CDP_URL ?? "http://127.0.0.1:9223";
+const cdpUrl = process.env.QUARK_E2E_CDP_URL ?? "http://127.0.0.1:9223";
 
 interface FileListItem {
   fid: string;
@@ -56,7 +56,7 @@ async function getJson<T>(path: string): Promise<T> {
 test.skipIf(!enabled)(
   "business endpoints read Quark's API without touching the UI",
   async () => {
-    const browser = await chromium.connectOverCDP(cdpUrl);
+    const browser = await chromium.connectOverCDP(cdpUrl, { noDefaults: true });
     try {
       const page = browser.contexts().flatMap((context) => context.pages())
         .find((candidate) => candidate.url().includes("renderer/index.html"));
@@ -64,7 +64,7 @@ test.skipIf(!enabled)(
 
       const hashBefore = await page.evaluate(() => location.hash);
 
-      const root = await getJson<FileListResult>("/list-file?raw=true");
+      const root = await getJson<FileListResult>("/files?raw=true");
       assert(Array.isArray(root.items));
       assertEquals(root.total, root.items.length);
       assertEquals(Object.hasOwn(root, "path"), false);
@@ -72,7 +72,7 @@ test.skipIf(!enabled)(
       assert(root.raw && Array.isArray(root.raw.items));
 
       const direct = await getJson<FileListResult>(
-        `/list-file?fid=${encodeURIComponent(root.fid)}&raw=true`,
+        `/files?fid=${encodeURIComponent(root.fid)}&raw=true`,
       );
       assertEquals(direct.fid, root.fid);
       assertEquals(
@@ -84,7 +84,7 @@ test.skipIf(!enabled)(
       const first = root.items[0];
       if (first) {
         const info = await getJson<FileInfoResult>(
-          `/file-info?fid=${encodeURIComponent(first.fid)}&raw=true`,
+          `/files/info?fid=${encodeURIComponent(first.fid)}&raw=true`,
         );
         assertEquals(info.fid, first.fid);
         assertEquals(info.name, first.name);
@@ -93,14 +93,14 @@ test.skipIf(!enabled)(
       }
 
       // Cloud tasks come from the task API, not the transport panel.
-      const tasks = await getJson<TaskListResult>("/task-list?raw=true");
+      const tasks = await getJson<TaskListResult>("/cloud-tasks?raw=true");
       assert(Array.isArray(tasks.tasks));
       assert(tasks.counts.total >= tasks.tasks.length);
       assert(tasks.raw !== undefined);
 
       // The old path-based input is gone and must not be silently ignored.
       const rejected = await fetch(
-        `${apiUrl}/list-file?path=${encodeURIComponent("Movies")}`,
+        `${apiUrl}/files?path=${encodeURIComponent("Movies")}`,
         { headers: { Accept: "application/json" } },
       );
       assertEquals(rejected.status, 400);

@@ -6,7 +6,7 @@ import {
   CDP_READY_TIMEOUT_MS,
   CDP_URL,
 } from "@quark/config";
-import { getManager } from "@quark/manager";
+import { processManager } from "@quark/manager";
 import { getRuntimeConfig } from "@quark/drive";
 import { getSavedRuntimeStatus, isManualStopActive } from "./status.ts";
 
@@ -32,7 +32,9 @@ export async function waitForCdpReady(
   let lastErr: unknown = null;
   while (Date.now() < deadline) {
     try {
-      const resp = await fetch(probeUrl);
+      const resp = await fetch(probeUrl, {
+        signal: AbortSignal.timeout(Math.max(1, Math.min(1500, deadline - Date.now()))),
+      });
       await resp.body?.cancel();
       if (resp.ok) return;
       lastErr = new Error(`CDP probe ${probeUrl} → HTTP ${resp.status}`);
@@ -71,18 +73,12 @@ export async function isAutoWakeBlocked(): Promise<boolean> {
   return await autoWakeBlockReason() !== null;
 }
 
-export function ensureQuarkAwake(
-  options: { force?: boolean } = {},
-): Promise<void> {
+export function ensureQuarkAwake(): Promise<void> {
   if (pendingWake) return pendingWake;
   pendingWake = (async () => {
     try {
-      if (!options.force && await isAutoWakeBlocked()) return;
-      // Cheap path: if CDP already answers, nothing to do.
       if (await isCdpReachable()) return;
-      // /start is idempotent: running → noop, minimized → restore, stopped →
-      // launch. The server's /start returns once spawned; we wait for CDP.
-      await getManager().start();
+      await processManager.start();
       await waitForCdpReady();
     } finally {
       pendingWake = null;

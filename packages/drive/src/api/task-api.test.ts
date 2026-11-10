@@ -4,22 +4,22 @@ import {
   throws as assertThrows,
 } from "node:assert/strict";
 import { test } from "bun:test";
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   buildQuarkTaskCountUrl,
   buildQuarkTaskListUrl,
   decodeTaskCursor,
   encodeTaskCursor,
-  fetchQuarkTaskCountsInBrowser,
-  fetchQuarkTaskPageInBrowser,
+  fetchQuarkTaskCounts,
+  fetchQuarkTaskPage,
   mapQuarkTask,
   parseQuarkTaskCounts,
   readTaskCursor,
   taskStatusName,
   toTaskTypeCsv,
-  updateQuarkTasksInBrowser,
+  updateQuarkTasks,
 } from "./task-api.ts";
-import { QuarkApiError } from "./renderer-http.ts";
+import { QuarkApiError } from "./http.ts";
 
 test("buildQuarkTaskListUrl uses the stable API contract", () => {
   const url = new URL(buildQuarkTaskListUrl());
@@ -144,24 +144,18 @@ test("readTaskCursor needs both metadata fields", () => {
   assertEquals(readTaskCursor({ filter_end_time: 7 }), null);
 });
 
-function pageFor(
+function transportFor(
   responses: Array<{ status?: number; body: unknown }>,
-): Page {
+): QuarkTransport {
   let index = 0;
-  return {
-    evaluate: (): Promise<unknown> => {
-      const response = responses[Math.min(index, responses.length - 1)];
-      index++;
-      return Promise.resolve({
-        status: response.status ?? 200,
-        text: JSON.stringify(response.body),
-      });
-    },
-  } as unknown as Page;
+  return async () => {
+    const response = responses[Math.min(index++, responses.length - 1)];
+    return { status: response.status ?? 200, text: JSON.stringify(response.body) };
+  };
 }
 
-test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async () => {
-  const page = pageFor([{
+test("fetchQuarkTaskPage maps tasks and gates the cursor", async () => {
+  const page = transportFor([{
     body: {
       code: 0,
       data: {
@@ -186,14 +180,14 @@ test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async () => 
     },
   }]);
 
-  const result = await fetchQuarkTaskPageInBrowser(page, { size: 2 });
+  const result = await fetchQuarkTaskPage(page, { size: 2 });
   assertEquals(result.tasks.map((task) => task.taskId), ["a", "b"]);
   assertEquals(result.cursor, "9:b");
   assertEquals(result.metadata.filter_end_task_id, "b");
 
   // A short page never advertises a cursor.
-  const shortPage = await fetchQuarkTaskPageInBrowser(
-    pageFor([{
+  const shortPage = await fetchQuarkTaskPage(
+    transportFor([{
       body: {
         code: 0,
         data: {
@@ -207,28 +201,28 @@ test("fetchQuarkTaskPageInBrowser maps tasks and gates the cursor", async () => 
   assertEquals(shortPage.cursor, null);
 });
 
-test("fetchQuarkTaskPageInBrowser rejects invalid data", async () => {
+test("fetchQuarkTaskPage rejects invalid data", async () => {
   await assertRejects(
     () =>
-      fetchQuarkTaskPageInBrowser(pageFor([{ body: { code: 0, data: {} } }])),
+      fetchQuarkTaskPage(transportFor([{ body: { code: 0, data: {} } }])),
     QuarkApiError,
   );
 });
 
-test("fetchQuarkTaskCountsInBrowser and updateQuarkTasksInBrowser", async () => {
-  const countsPage = pageFor([{
+test("fetchQuarkTaskCounts and updateQuarkTasks", async () => {
+  const countsPage = transportFor([{
     body: { code: 0, data: { count: { "1": 3, "2": 1 } } },
   }]);
-  const counts = await fetchQuarkTaskCountsInBrowser(
+  const counts = await fetchQuarkTaskCounts(
     countsPage,
     "offline_download",
   );
   assertEquals(counts.counts.running, 3);
 
-  const mutationPage = pageFor([{
+  const mutationPage = transportFor([{
     body: { code: 0, data: { ignored: true } },
   }]);
-  const result = await updateQuarkTasksInBrowser(
+  const result = await updateQuarkTasks(
     mutationPage,
     ["a", "b"],
     "resume",

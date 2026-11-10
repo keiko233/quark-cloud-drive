@@ -1,14 +1,3 @@
-import type { Page } from "playwright";
-
-/**
- * Transport for Quark's business JSON API.
- *
- * Every call runs as a same-origin `fetch` inside the logged-in renderer, so
- * Quark's session cookie is applied automatically. This module never reads,
- * copies, logs, or persists the cookie, an `Authorization` header, or any URL
- * the renderer resolves — it only forwards the request and returns the body.
- */
-
 export const QUARK_API_ORIGIN = "https://drive-pc.quark.cn";
 
 /**
@@ -22,10 +11,6 @@ export const QUARK_BASE_PARAMS: Readonly<Record<string, string>> = {
 };
 
 export const DEFAULT_QUARK_TIMEOUT_MS = 8_000;
-
-const RENDERER_HEADERS: Record<string, string> = {
-  accept: "application/json, text/plain, */*",
-};
 
 type JsonObject = Record<string, unknown>;
 
@@ -87,63 +72,19 @@ export function buildQuarkApiUrl(
   return url.toString();
 }
 
-export interface RendererRequest {
+export interface QuarkRequest {
   method?: "GET" | "POST";
   url: string;
   body?: unknown;
   timeoutMs?: number;
 }
 
-export interface RendererHttpResponse {
+export interface QuarkHttpResponse {
   status: number;
   text: string;
 }
 
-/**
- * Issue one request from the renderer and return the raw response text.
- * Never throws on a non-2xx status; callers decide what a status means.
- */
-export async function requestInRenderer(
-  page: Page,
-  request: RendererRequest,
-): Promise<RendererHttpResponse> {
-  const { method = "GET", url, body, timeoutMs = DEFAULT_QUARK_TIMEOUT_MS } =
-    request;
-  const headers = body === undefined
-    ? RENDERER_HEADERS
-    : { ...RENDERER_HEADERS, "content-type": "application/json" };
-
-  try {
-    return await page.evaluate(
-      async ({ method, url, body, timeoutMs, headers }) => {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-          const response = await fetch(url, {
-            method,
-            credentials: "include",
-            cache: "no-store",
-            headers,
-            ...(body === null ? {} : { body: JSON.stringify(body) }),
-            signal: controller.signal,
-          });
-          return { status: response.status, text: await response.text() };
-        } finally {
-          clearTimeout(timer);
-        }
-      },
-      {
-        method,
-        url,
-        body: body ?? null,
-        timeoutMs,
-        headers,
-      },
-    );
-  } catch {
-    throw new QuarkApiError("renderer request failed");
-  }
-}
+export type QuarkTransport = (request: QuarkRequest) => Promise<QuarkHttpResponse>;
 
 /** Parse a response body as JSON, or throw a `QuarkApiError`. */
 export function parseJsonText(text: string): unknown {
@@ -194,16 +135,16 @@ export function parseQuarkEnvelope(payload: unknown): QuarkEnvelope {
  * business errors.
  */
 export async function requestQuarkApi(
-  page: Page,
-  request: RendererRequest,
+  transport: QuarkTransport,
+  request: QuarkRequest,
 ): Promise<QuarkEnvelope> {
-  let response: RendererHttpResponse;
+  let response: QuarkHttpResponse;
   try {
-    response = await requestInRenderer(page, request);
+    response = await transport(request);
   } catch (error) {
     throw error instanceof QuarkApiError
       ? error
-      : new QuarkApiError("renderer request failed");
+      : new QuarkApiError("Quark API transport failed");
   }
 
   if (response.status !== 200) {

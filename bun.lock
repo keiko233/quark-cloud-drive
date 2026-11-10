@@ -46,9 +46,6 @@
       "name": "@quark/manager",
       "version": "0.1.0",
       "dependencies": {
-        "@orpc/client": "^1.15.0",
-        "@orpc/contract": "^1.15.0",
-        "@orpc/openapi-client": "^1.15.0",
         "@orpc/server": "^1.15.0",
         "@quark/config": "workspace:*",
         "@quark/contract": "workspace:*",
@@ -69,6 +66,7 @@
         "@quark/manager": "workspace:*",
         "hono": "^4.13.5",
         "playwright": "^1.62.1",
+        "zod": "^4.5.4",
       },
     },
   },

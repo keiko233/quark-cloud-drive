@@ -1,27 +1,23 @@
-/**
- * @quark/drive — the logged-in Quark session and its business capabilities.
- *
- * Everything here talks to Quark's cloud-drive JSON API through the renderer
- * session and returns plain data. No HTTP surface, no idle policy, and no
- * process lifecycle: those live in @quark/service and @quark/manager.
- */
+/** Quark drive capabilities: JSON API operations and native local transfers. */
 export {
-  downloadFile,
-  downloadTaskList,
-  fileInfo,
-  fetchQuarkTaskCountsInBrowser,
-  importShareLink,
-  listFile,
+  listDownloads,
+  hasActiveDownloads,
+  getFile,
+  fetchQuarkTaskCounts,
+  saveShare,
+  getShareImport,
+  listFiles,
   loginStatus,
   readLoginStateRaw,
   startDownload,
-  taskList,
-  updateDownloadTask,
-  updateTask,
-  userInfo,
+  listCloudTasks,
+  controlDownloads,
+  controlCloudTasks,
+  getAccount,
 } from "./actions/index.ts";
-export { getQuarkPage } from "./actions/browser-session.ts";
+export { getQuarkTransport } from "./actions/quark-session.ts";
 export {
+  clearBrowser,
   getBrowser,
   getOperationQueue,
   setBrowser,
@@ -41,3 +37,5 @@ export {
   QUARK_LOGIN_PAGE_URL,
   QUARK_MEMBER_PAGE_URL,
 } from "./consts.ts";
+
+export { QuarkApiError, isQuarkLoginError } from "./api/http.ts";

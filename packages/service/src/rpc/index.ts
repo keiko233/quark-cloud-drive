@@ -21,18 +21,10 @@ const handler = new OpenAPIHandler(clientRouter, {
       specGenerateOptions: {
         info: {
           title: "Quark Cloud Drive API",
-          version: "1.0.0",
-          description: [
-            "Programmatic interface to the Quark Cloud Drive instance in this",
-            "container — process lifecycle, window control, and the drive's",
-            "business API in one process.",
-            "Every business endpoint is a direct call to Quark's cloud-drive",
-            "JSON API, issued from the logged-in renderer; no endpoint drives",
-            "the Quark UI, so business responses are plain JSON (no SSE",
-            "progress streams). Locators are Quark `fid`s. Add `raw=true` to",
-            "any business endpoint to include the untouched upstream fields",
-            "under a `raw` object.",
-          ].join("\n"),
+          version: "2.0.0",
+          description:
+            "Quark Drive JSON API and native download engine. " +
+            "Use /login/qrcode to sign in, and /mcp for drive tools.",
         },
       },
     }),
@@ -79,6 +71,7 @@ app.use("/*", async (c, next) => {
 export function startService(): void {
   Bun.serve({
     port: SERVER_PORT,
+    idleTimeout: 120,
     // The two WebSocket bridges upgrade before Hono: Bun needs `undefined`
     // back from the fetch handler for a successful upgrade, which a Hono
     // handler cannot express.

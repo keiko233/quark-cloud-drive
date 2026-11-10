@@ -10,7 +10,6 @@
       "@quark/config": ["./packages/config/src/index.ts"],
       "@quark/contract": ["./packages/contract/src/index.ts"],
       "@quark/contract/schemas": ["./packages/contract/src/schemas.ts"],
-      "@quark/contract/server": ["./packages/contract/src/server.ts"],
       "@quark/contract/client": ["./packages/contract/src/client.ts"],
       "@quark/manager": ["./packages/manager/src/index.ts"],
       "@quark/drive": ["./packages/drive/src/index.ts"],

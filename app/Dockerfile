@@ -180,21 +180,19 @@ COPY ./packages /opt/quark-app/packages
 RUN chmod +x /usr/local/bin/run-quark.sh \
                 /usr/local/bin/launch-quark.sh
 
-# Ports: 3000 public API + manager API + OpenAPI + MCP + noVNC page,
-# 9223 CDP proxy, 5900 raw VNC (x11vnc).
+# 3000 serves REST, MCP, noVNC and DevTools. 9223 is for local dev CDP.
 
 USER root
 
-EXPOSE 3000 5900 9223
+EXPOSE 3000 9223
 
 ENTRYPOINT ["/usr/local/bin/run-quark.sh"]
 
 # Development reuses the exact Wine/runtime layer, but runs the bind-mounted
-# workspace through the Bun dev supervisor. Production is kept as the final
+# workspace through the Bun watcher. Production is kept as the final
 # stage so a plain `docker build` still produces the runtime image.
 FROM runtime AS dev
 COPY ./app/scripts/dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
-COPY ./app/scripts/dev-client.ts /opt/quark-app/app/scripts/dev-client.ts
 RUN chmod +x /usr/local/bin/dev-entrypoint.sh && \
     bun install --frozen-lockfile
 ENV QUARK_DEV=1

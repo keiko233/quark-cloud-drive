@@ -17,6 +17,7 @@
     "@quark/drive": "workspace:*",
     "@quark/manager": "workspace:*",
     "hono": "^4.13.5",
-    "playwright": "^1.62.1"
+    "playwright": "^1.62.1",
+    "zod": "^4.5.4"
   }
 }

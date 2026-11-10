@@ -4,21 +4,21 @@ import {
   throws as assertThrows,
 } from "node:assert/strict";
 import { test } from "bun:test";
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   buildQuarkShareDetailUrl,
   buildQuarkShareDirUrl,
   buildQuarkShareSaveUrl,
   buildQuarkShareTokenUrl,
   buildQuarkTaskPollUrl,
-  fetchQuarkShareDetailInBrowser,
-  fetchQuarkShareSaveDirInBrowser,
+  fetchQuarkShareDetail,
+  fetchQuarkShareSaveDir,
   parseQuarkShareUrl,
-  pollQuarkTaskInBrowser,
+  readQuarkShareTask,
   readQuarkTaskSavedFids,
-  saveQuarkShareInBrowser,
+  saveQuarkShare,
 } from "./share-api.ts";
-import { QuarkApiError } from "./renderer-http.ts";
+import { QuarkApiError } from "./http.ts";
 
 test("parseQuarkShareUrl accepts URLs, ids and passcodes", () => {
   assertEquals(parseQuarkShareUrl("https://pan.quark.cn/s/abcdef"), {
@@ -76,30 +76,24 @@ test("share URLs use the stable API contract", () => {
   assertEquals(poll.searchParams.get("retry_index"), "2");
 });
 
-function pageFor(
+function transportFor(
   responses: Array<{ status?: number; body: unknown }>,
-): Page {
+): QuarkTransport {
   let index = 0;
-  return {
-    evaluate: (): Promise<unknown> => {
-      const response = responses[Math.min(index, responses.length - 1)];
-      index++;
-      return Promise.resolve({
-        status: response.status ?? 200,
-        text: JSON.stringify(response.body),
-      });
-    },
-  } as unknown as Page;
+  return async () => {
+    const response = responses[Math.min(index++, responses.length - 1)];
+    return { status: response.status ?? 200, text: JSON.stringify(response.body) };
+  };
 }
 
-test("fetchQuarkShareDetailInBrowser dedupes entries across pages", async () => {
+test("fetchQuarkShareDetail dedupes entries across pages", async () => {
   const full = Array.from({ length: 50 }, (_, i) => ({
     fid: `fid-${i}`,
     file_name: `name-${i}`,
     share_fid_token: `token-${i}`,
     dir: false,
   }));
-  const page = pageFor([
+  const page = transportFor([
     { body: { code: 0, data: { list: full } } },
     {
       body: {
@@ -116,17 +110,17 @@ test("fetchQuarkShareDetailInBrowser dedupes entries across pages", async () => 
     },
   ]);
 
-  const detail = await fetchQuarkShareDetailInBrowser(page, "pwd", "st");
+  const detail = await fetchQuarkShareDetail(page, "pwd", "st");
   assertEquals(detail.entries.length, 50);
   assertEquals(detail.entries[0].fidToken, "token-0");
   assertEquals(detail.pages.length, 2);
 });
 
-test("fetchQuarkShareDetailInBrowser rejects invalid entries", async () => {
+test("fetchQuarkShareDetail rejects invalid entries", async () => {
   await assertRejects(
     () =>
-      fetchQuarkShareDetailInBrowser(
-        pageFor([{ body: { code: 0, data: { list: [{ fid: "x" }] } } }]),
+      fetchQuarkShareDetail(
+        transportFor([{ body: { code: 0, data: { list: [{ fid: "x" }] } } }]),
         "pwd",
         "st",
       ),
@@ -134,9 +128,9 @@ test("fetchQuarkShareDetailInBrowser rejects invalid entries", async () => {
   );
 });
 
-test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async () => {
-  const dir = await fetchQuarkShareSaveDirInBrowser(
-    pageFor([{
+test("fetchQuarkShareSaveDir reads the default save folder", async () => {
+  const dir = await fetchQuarkShareSaveDir(
+    transportFor([{
       body: {
         code: 0,
         data: { pdir_fid: "share-inbox", pdir_name: "来自：分享" },
@@ -147,32 +141,21 @@ test("fetchQuarkShareSaveDirInBrowser reads the default save folder", async () =
   assertEquals(dir.name, "来自：分享");
 });
 
-/** Capture the renderer request so a test can assert on the exact body. */
-function capturingPage(response: { status?: number; body: unknown }): {
-  page: Page;
-  requests: Array<{ method?: string; url: string; body?: unknown }>;
-} {
-  const requests: Array<{ method?: string; url: string; body?: unknown }> = [];
-  const page = {
-    evaluate: (
-      _fn: unknown,
-      request: { method?: string; url: string; body?: unknown },
-    ) => {
-      requests.push(request);
-      return Promise.resolve({
-        status: response.status ?? 200,
-        text: JSON.stringify(response.body),
-      });
-    },
-  } as unknown as Page;
-  return { page, requests };
+/** Capture the exact request submitted to Quark. */
+function capturingTransport(response: { status?: number; body: unknown }) {
+  const requests: Parameters<QuarkTransport>[0][] = [];
+  const transport: QuarkTransport = async (request) => {
+    requests.push(request);
+    return { status: response.status ?? 200, text: JSON.stringify(response.body) };
+  };
+  return { transport, requests };
 }
 
-test("saveQuarkShareInBrowser posts the documented save body", async () => {
-  const { page, requests } = capturingPage({
+test("saveQuarkShare posts the documented save body", async () => {
+  const { transport, requests } = capturingTransport({
     body: { code: 0, data: { task_id: "task-9" } },
   });
-  const result = await saveQuarkShareInBrowser(page, {
+  const result = await saveQuarkShare(transport, {
     pwdId: "pwd-1",
     stoken: "st-1",
     toDirFid: "dest-fid",
@@ -214,19 +197,27 @@ test("readQuarkTaskSavedFids reads save_as_top_fids", () => {
   );
 });
 
-test("pollQuarkTaskInBrowser waits for the finish status", async () => {
-  const page = pageFor([
-    { body: { code: 0, data: { status: 1 } } },
-    { body: { code: 0, data: { status: 2 } } },
-  ]);
-  const task = await pollQuarkTaskInBrowser(page, "task-1");
-  assertEquals(task.status, 2);
-  assertEquals(task.statusName, "finish");
+test("saveQuarkShare rejects a response without a task ID", async () => {
+  await assertRejects(() => saveQuarkShare(
+    transportFor([{ body: { code: 0, data: {} } }]),
+    { pwdId: "id", stoken: "token", toDirFid: "0", entries: [] },
+  ), /submission could not be confirmed/);
 });
 
-test("pollQuarkTaskInBrowser reports failures", async () => {
-  const page = pageFor([{ body: { code: 0, data: { status: 3 } } }]);
-  const task = await pollQuarkTaskInBrowser(page, "task-1");
-  assertEquals(task.statusName, "fail");
-  await assertRejects(() => pollQuarkTaskInBrowser(page, ""), QuarkApiError);
+test("share status distinguishes pending, completed and failed", async () => {
+  const transport = transportFor([
+    { body: { code: 0, data: { status: 1 } } },
+    { body: { code: 0, data: { status: 2, save_as: { save_as_top_fids: ["new-id"] } } } },
+    { body: { code: 0, data: { status: 3, error_msg: "quota exceeded" } } },
+  ]);
+  const pending = await readQuarkShareTask(transport, "task-1");
+  assertEquals(pending, {
+    taskId: "task-1", status: "pending", nextRetryIndex: 1, savedFids: [], error: null,
+  });
+  const completed = await readQuarkShareTask(transport, "task-1", 1);
+  assertEquals(completed.status, "completed");
+  assertEquals(completed.savedFids, ["new-id"]);
+  const failed = await readQuarkShareTask(transport, "task-2");
+  assertEquals(failed.status, "failed");
+  assertEquals(failed.error, "quota exceeded");
 });

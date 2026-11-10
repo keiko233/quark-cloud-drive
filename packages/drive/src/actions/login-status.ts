@@ -1,14 +1,13 @@
 import {
   QUARK_HOME_PAGE_URL,
   QUARK_LOGIN_PAGE_URL,
-  QUARK_MEMBER_PAGE_URL,
 } from "../consts.ts";
 import { log } from "@quark/config";
 import { getBrowserContext } from "../browser/page-utils.ts";
 import { getOperationQueue } from "../browser/context.ts";
 import { loginStatusCache } from "../cache/caches.ts";
-import { getQuarkPage } from "./browser-session.ts";
-import { probeQuarkLoginInBrowser } from "./user-info-api.ts";
+import { getQuarkTransport } from "./quark-session.ts";
+import { probeQuarkLogin } from "../api/user-info-api.ts";
 
 import type { LoginState, QuarkLoginStatus } from "@quark/contract/schemas";
 
@@ -37,11 +36,9 @@ export function readLoginStateRaw(): LoginState {
     if (pages.some((page) => page.url().includes(QUARK_LOGIN_PAGE_URL))) {
       return "logged_out";
     }
-    const home = pages.some((page) => page.url().includes(QUARK_HOME_PAGE_URL));
-    const memberOnly = pages.some((page) =>
-      page.url().includes(QUARK_MEMBER_PAGE_URL)
-    ) && !home;
-    if (home && !memberOnly) return "logged_in";
+    if (pages.some((page) => page.url().includes(QUARK_HOME_PAGE_URL))) {
+      return "logged_in";
+    }
     return "unknown";
   } catch {
     return "unknown";
@@ -57,6 +54,10 @@ export function loginStatus(
   options: LoginStatusOptions = {},
 ): Promise<QuarkLoginStatus> {
   const includeRaw = options.raw === true;
+  if (readLoginStateRaw() === "logged_out") {
+    loginStatusCache.delete("s");
+    return Promise.resolve({ loggedIn: false });
+  }
   const cached = loginStatusCache.get("s");
   if (cached !== undefined) {
     return Promise.resolve(projectLoginStatus(cached, includeRaw));
@@ -66,8 +67,8 @@ export function loginStatus(
     "loginStatus",
     { key: "loginStatus" },
     async () => {
-      const page = await getQuarkPage();
-      const probe = await probeQuarkLoginInBrowser(page);
+      const transport = getQuarkTransport();
+      const probe = await probeQuarkLogin(transport);
       log.debug(`loginStatus: loggedIn=${probe.loggedIn}`);
 
       const result: QuarkLoginStatus = {
@@ -75,7 +76,7 @@ export function loginStatus(
         raw: probe.raw,
       };
       loginStatusCache.set("s", result);
-      return projectLoginStatus(result, includeRaw);
+      return result;
     },
-  );
+  ).then((result) => projectLoginStatus(result, includeRaw));
 }

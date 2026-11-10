@@ -5,18 +5,7 @@ import type {
 } from "@quark/contract/schemas";
 import { QUARK_LOCAL_DOWNLOAD_STATUS_CODES } from "@quark/contract/schemas";
 
-/**
- * The Quark app's built-in downloader, driven from the renderer.
- *
- * `GET /download-file` only mints signed URLs. Actually writing bytes to disk
- * needs the app's own transfer engine: its CDN requests succeed where plain
- * HTTP clients from this host are rejected (`412`), and it already knows how
- * to fan a folder out into per-file transfers. We hand it one `fid` through
- * its own store action — no row is clicked, no menu is opened, and the
- * transport panel is never rendered.
- */
-
-/** Suffix the app gives an in-flight file; renamed away on completion. */
+/** CDP adapter for the Quark client's native download engine. */
 export const QUARK_PARTIAL_DOWNLOAD_SUFFIX = ".qkdownloading";
 
 type JsonObject = Record<string, unknown>;
@@ -31,21 +20,8 @@ type RendererStore = {
   getState: () => Record<string, unknown>;
 };
 
-/** The slice of `node:fs` these actions use inside the renderer. */
-type RendererFs = {
-  existsSync(path: string): boolean;
-  unlinkSync(path: string): void;
-  statSync(path: string): { isDirectory(): boolean };
-  readdirSync(path: string): string[];
-};
-
-/** The slice of `node:path` these actions use inside the renderer. */
-type RendererPath = {
-  join(...parts: string[]): string;
-  dirname(path: string): string;
-  basename(path: string): string;
-  extname(path: string): string;
-};
+/** The slice of `node:fs` used for best effort exact-path cleanup. */
+type RendererFs = { unlinkSync(path: string): void };
 
 const STATUS_NAMES: Record<number, QuarkDownloadStatus> = {
   [-1]: "error",
@@ -90,7 +66,7 @@ export function mapLocalDownloadTask(raw: JsonObject): QuarkDownloadTask {
   const statusCode = readNumber(raw.status) ??
     QUARK_LOCAL_DOWNLOAD_STATUS_CODES.new;
   return {
-    taskId: typeof raw.id === "string" ? raw.id : "",
+    taskId: typeof raw.id === "string" || typeof raw.id === "number" ? String(raw.id) : "",
     name: typeof raw.name === "string" ? raw.name : "",
     status: localDownloadStatusName(statusCode),
     statusCode,
@@ -150,8 +126,8 @@ export async function startQuarkDownloadInBrowser(
     const listTasks = (): Record<string, unknown>[] => {
       const download = store.getState().downloadTask as Record<string, unknown>;
       return [
-        ...(download.transportTasks as Record<string, unknown>[]),
-        ...(download.completeTasks as Record<string, unknown>[]),
+        ...(Array.isArray(download.transportTasks) ? download.transportTasks : []),
+        ...(Array.isArray(download.completeTasks) ? download.completeTasks : []),
       ];
     };
     const before = new Set(listTasks().map((task) => String(task.id)));
@@ -170,7 +146,7 @@ export async function startQuarkDownloadInBrowser(
       return out;
     };
 
-    store.dispatch.downloadTask.create({
+    const dispatch = store.dispatch.downloadTask.create({
       savePath: input.savePath,
       infos: [{
         fid: input.fid,
@@ -183,11 +159,18 @@ export async function startQuarkDownloadInBrowser(
     });
 
     return (async () => {
-      for (let attempt = 0; attempt < 20; attempt++) {
+      // Store actions may reject asynchronously. Check while the new task
+      // propagates instead of dropping the real rejection or waiting forever.
+      let failure: { message: string } | undefined;
+      void Promise.resolve(dispatch).catch((error) => {
+        failure = { message: error instanceof Error ? error.message : String(error) };
+      });
+      for (let attempt = 0; attempt < 50; attempt++) {
+        if (failure) throw new Error(failure.message);
         const created = listTasks().find(
           (task) =>
-            !before.has(String(task.id)) &&
-            String(task.fid ?? "") === input.fid,
+            task.id !== null && task.id !== undefined && String(task.id) !== "" &&
+            !before.has(String(task.id)) && String(task.fid ?? "") === input.fid,
         );
         if (created) {
           return { taskId: String(created.id), raw: project(created) };
@@ -244,6 +227,20 @@ export async function readQuarkDownloadQueueInBrowser(
   });
 }
 
+export async function hasActiveQuarkDownloadsInBrowser(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const { store } = window as unknown as { store: RendererStore };
+    const { transportTasks } = store.getState().downloadTask as {
+      transportTasks?: Array<{ status?: number; taskStatus?: number }>;
+    };
+    if (!Array.isArray(transportTasks)) throw new Error("Native download queue is not ready");
+    return transportTasks.some((task) => {
+      const status = Number(task.status ?? task.taskStatus ?? 0);
+      return status >= 0 && status <= 3;
+    });
+  });
+}
+
 export interface QuarkLocalDownloadControl {
   taskIds: string[];
   operation: "pause" | "resume" | "cancel";
@@ -257,8 +254,7 @@ export interface QuarkLocalDownloadControlResult {
 
 /**
  * Apply `pause`/`resume`/`cancel` to local tasks by id. `cancel` stops the
- * transfer, drops it from the app's list, and deletes the `.qkdownloading`
- * partials it left on disk — nothing else is ever removed.
+ * transfer, drops it from the app's list. Exact-path partial cleanup is best effort.
  */
 export async function controlQuarkDownloadInBrowser(
   page: Page,
@@ -268,11 +264,6 @@ export async function controlQuarkDownloadInBrowser(
     const store = (window as unknown as { store: RendererStore }).store;
     const fs = (window as unknown as { require: (id: string) => RendererFs })
       .require("fs");
-    const pathMod =
-      (window as unknown as { require: (id: string) => RendererPath })
-        .require("path");
-    const suffix = ".qkdownloading";
-
     const findTask = (taskId: string): Record<string, unknown> | undefined => {
       const download = store.getState().downloadTask as Record<string, unknown>;
       const all = [
@@ -282,62 +273,6 @@ export async function controlQuarkDownloadInBrowser(
       return all.find((task) => String(task.id) === taskId);
     };
 
-    // The app writes an in-flight file as `<stem>-<hash><ext>.qkdownloading`,
-    // so the partial is matched by directory + stem, never by exact name.
-    const removedPaths: string[] = [];
-    const tryUnlink = (file: string): void => {
-      try {
-        if (!fs.existsSync(file)) return;
-        fs.unlinkSync(file);
-        removedPaths.push(file);
-      } catch {
-        // A locked or already-gone partial must not fail the whole call.
-      }
-    };
-    const scanForPartials = (dir: string, stem: string | null): void => {
-      let names: string[] = [];
-      try {
-        names = fs.readdirSync(dir);
-      } catch {
-        return;
-      }
-      for (const name of names) {
-        const full = pathMod.join(dir, name);
-        if (name.endsWith(suffix)) {
-          if (stem === null || name.startsWith(stem)) tryUnlink(full);
-          continue;
-        }
-        try {
-          if (fs.statSync(full).isDirectory()) scanForPartials(full, stem);
-        } catch {
-          // Skip anything we cannot inspect.
-        }
-      }
-    };
-    const removePartials = (target: unknown): string[] => {
-      if (typeof target !== "string" || target === "") return [];
-      const start = removedPaths.length;
-      let isDirectory = false;
-      try {
-        isDirectory = fs.statSync(target).isDirectory();
-      } catch {
-        // The destination may not exist yet; the exact-name probe below still
-        // covers a partial written next to it.
-      }
-      if (isDirectory) {
-        scanForPartials(target, null);
-      } else {
-        tryUnlink(`${target}${suffix}`);
-        const base = pathMod.basename(target);
-        const ext = pathMod.extname(base);
-        const stem = ext === ""
-          ? base
-          : base.slice(0, base.length - ext.length);
-        scanForPartials(pathMod.dirname(target), stem);
-      }
-      return removedPaths.slice(start);
-    };
-
     const applied: string[] = [];
     const removedPartials: string[] = [];
     for (const taskId of control.taskIds) {
@@ -345,29 +280,37 @@ export async function controlQuarkDownloadInBrowser(
       if (!task) continue;
       const status = Number(task.status);
       if (control.operation === "pause") {
-        store.dispatch.downloadTask.pauseOne(task);
+        await store.dispatch.downloadTask.pauseOne(task);
       } else if (control.operation === "resume") {
-        store.dispatch.downloadTask.resumeOne(task);
+        await store.dispatch.downloadTask.resumeOne(task);
       } else {
         const finished = status === 6;
         const fromTab = finished ? "complete" : "transport";
         if (!finished) {
           try {
-            store.dispatch.downloadTask.pauseOne(task);
+            await store.dispatch.downloadTask.pauseOne(task);
           } catch {
             // Pausing is best effort; removal below is authoritative.
           }
         }
-        try {
-          store.dispatch.downloadTask.removeOne({ task, fromTab });
-        } catch {
-          // Already gone.
+        await store.dispatch.downloadTask.removeOne({ task, fromTab });
+        // Do not match by a filename prefix: another active transfer can
+        // have the same stem. Leave hashed partials to Quark's own cleanup.
+        if (!finished && typeof task.path === "string" && task.path) {
+          const partial = task.path.endsWith(control.suffix)
+            ? task.path
+            : task.path + control.suffix;
+          try {
+            fs.unlinkSync(partial);
+            removedPartials.push(partial);
+          } catch {
+            // Quark may already have removed the file, or kept it locked.
+          }
         }
-        removedPartials.push(...removePartials(task.path));
       }
       applied.push(taskId);
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
     return { applied, removedPartials, raw: {} };
-  }, input);
+  }, { ...input, suffix: QUARK_PARTIAL_DOWNLOAD_SUFFIX });
 }

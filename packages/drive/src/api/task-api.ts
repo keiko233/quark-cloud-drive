@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import type {
   QuarkTask,
   QuarkTaskCounts,
@@ -18,7 +18,7 @@ import {
   readFiniteNumber,
   readString,
   requestQuarkApi,
-} from "./renderer-http.ts";
+} from "./http.ts";
 
 /**
  * Quark's cloud-task API (`/1/clouddrive/task/*`). This covers every task the
@@ -254,12 +254,12 @@ export function readTaskCursor(metadata: JsonObject): string | null {
   return encodeTaskCursor(endTaskId, endTime);
 }
 
-export async function fetchQuarkTaskPageInBrowser(
-  page: Page,
+export async function fetchQuarkTaskPage(
+  transport: QuarkTransport,
   query: QuarkTaskQuery = {},
 ): Promise<QuarkTaskPage> {
   const size = clampTaskListSize(query.size);
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url: buildQuarkTaskListUrl(query),
     timeoutMs: TASK_API_TIMEOUT_MS,
   });
@@ -281,11 +281,11 @@ export async function fetchQuarkTaskPageInBrowser(
   };
 }
 
-export async function fetchQuarkTaskCountsInBrowser(
-  page: Page,
+export async function fetchQuarkTaskCounts(
+  transport: QuarkTransport,
   type?: string,
 ): Promise<QuarkTaskCountsResult> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url: buildQuarkTaskCountUrl(type),
     timeoutMs: TASK_API_TIMEOUT_MS,
   });
@@ -299,12 +299,12 @@ export interface QuarkTaskMutationResult {
   raw: JsonObject;
 }
 
-export async function updateQuarkTasksInBrowser(
-  page: Page,
+export async function updateQuarkTasks(
+  transport: QuarkTransport,
   taskIds: string[],
   operation: QuarkTaskOperation,
 ): Promise<QuarkTaskMutationResult> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     method: "POST",
     url: buildQuarkTaskStatusUrl(),
     body: {

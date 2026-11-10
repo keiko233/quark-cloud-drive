@@ -10,8 +10,7 @@
 #   DISPLAY, LIBVA_DRIVER_NAME, MESA_*
 #
 # Intended to be exec'd as the wineuser so the resulting process group is owned
-# by wineuser. When launched by manager.py we do `su wineuser` first; this
-# script does not assume a particular uid.
+# by wineuser. The manager switches users before calling this script.
 set -u
 
 EXE="${EXE:?EXE is required}"
@@ -65,7 +64,7 @@ if [ -n "$START_LNK" ]; then
     # Spark runtime — start via the .lnk so the launcher gets the right cwd.
     exec "$WINE_BIN" 'C:\windows\command\start.exe' /Unix "$START_LNK" \
         --no-sandbox \
-        --remote-debugging-port=9222 \
+        --remote-debugging-port="${QUARK_CDP_PORT:-9222}" \
         --remote-debugging-address=0.0.0.0 \
         --remote-allow-origins='*' \
         "${_extra[@]}"
@@ -76,7 +75,7 @@ else
     exec "$WINE_BIN" "$(basename "$EXE")" \
         --launch-from=startmenu \
         --brand-clouddrive \
-        --remote-debugging-port=9222 \
+        --remote-debugging-port="${QUARK_CDP_PORT:-9222}" \
         --remote-debugging-address=0.0.0.0 \
         --remote-allow-origins='*' \
         "${_extra[@]}"

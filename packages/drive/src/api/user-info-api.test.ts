@@ -3,25 +3,19 @@ import {
   throws as assertThrows,
 } from "node:assert/strict";
 import { test } from "bun:test";
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   buildQuarkUserInfoUrl,
-  fetchQuarkMemberInBrowser,
+  fetchQuarkMember,
   formatQuarkCapacity,
   formatQuarkCapacityValue,
   parseQuarkMemberData,
-  probeQuarkLoginInBrowser,
+  probeQuarkLogin,
 } from "./user-info-api.ts";
-import { QuarkApiError } from "./renderer-http.ts";
+import { QuarkApiError } from "./http.ts";
 
-function fakePage(response: { status: number; body: unknown }): Page {
-  return {
-    evaluate: (): Promise<unknown> =>
-      Promise.resolve({
-        status: response.status,
-        text: JSON.stringify(response.body),
-      }),
-  } as unknown as Page;
+function fakeTransport(response: { status: number; body: unknown }): QuarkTransport {
+  return async () => ({ status: response.status, text: JSON.stringify(response.body) });
 }
 
 test("buildQuarkUserInfoUrl uses the stable API contract", () => {
@@ -83,33 +77,33 @@ test("parseQuarkMemberData rejects missing capacity", () => {
   );
 });
 
-test("fetchQuarkMemberInBrowser reads a logged-in member payload", async () => {
-  const page = fakePage({
+test("fetchQuarkMember reads a logged-in member payload", async () => {
+  const page = fakeTransport({
     status: 200,
     body: {
       code: 0,
       data: { use_capacity: 1024, total_capacity: 2048 },
     },
   });
-  const member = await fetchQuarkMemberInBrowser(page);
+  const member = await fetchQuarkMember(page);
   assertEquals(member.capacity, "1K/2K");
 });
 
-test("probeQuarkLoginInBrowser treats 401/31001 as logged out", async () => {
-  const loggedOut = fakePage({
+test("probeQuarkLogin treats 401/31001 as logged out", async () => {
+  const loggedOut = fakeTransport({
     status: 401,
     body: { code: 31001, message: "require login [guest]" },
   });
-  assertEquals(await probeQuarkLoginInBrowser(loggedOut), {
+  assertEquals(await probeQuarkLogin(loggedOut), {
     loggedIn: false,
     raw: { code: 31001, status: 401 },
   });
 
-  const loggedIn = fakePage({
+  const loggedIn = fakeTransport({
     status: 200,
     body: { code: 0, data: { use_capacity: 1024, total_capacity: 2048 } },
   });
-  const probe = await probeQuarkLoginInBrowser(loggedIn);
+  const probe = await probeQuarkLogin(loggedIn);
   assertEquals(probe.loggedIn, true);
   assertEquals(probe.raw.data instanceof Object, true);
 });

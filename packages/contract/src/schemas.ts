@@ -31,14 +31,10 @@ export const ServerStatusSchema = z.object({
     "Epoch ms of the last start, or null when stopped.",
   ),
   cdpActivityAt: z.number().nullable().describe(
-    "Epoch ms of the last CDP traffic seen by the proxy, or null if none yet. " +
+    "Epoch ms of the last drive request or diagnostic CDP activity, or null. " +
       "Exposed so @quark/service can make idle decisions without polling CDP itself.",
   ),
   counts: ProcessCountsSchema,
-});
-
-export const HealthzSchema = z.object({
-  ok: z.boolean(),
 });
 
 // ─── Server events (SSE from @quark/manager) ────────────────────────────────────
@@ -58,11 +54,8 @@ export type ServerEvent = z.infer<typeof ServerEventSchema>;
 
 // ─── Quark business API primitives ───────────────────────────────────────────
 //
-// Every business procedure in @quark/drive is a direct JSON call to Quark's
-// cloud-drive API (`https://drive-pc.quark.cn/1/clouddrive/...`), issued from
-// the logged-in renderer so the session cookie is applied automatically. There
-// is no DOM/CDP fallback and no UI state in any response, so results no longer
-// carry a `source` discriminator: they are always live API data.
+// Files, account, shares and cloud tasks call Quark JSON APIs. Local
+// transfers use the Quark client's native download engine.
 
 export const RawOptionSchema = z.union([
   z.boolean(),
@@ -155,73 +148,6 @@ export const QuarkFileInfoSchema = z.object({
   raw: RawObjectSchema.optional(),
 });
 
-// ─── Download ────────────────────────────────────────────────────────────────
-
-/**
- * One downloadable file. Quark has no folder archive: asking for a folder
- * makes Quark scan it and return the flat file list, and each file is fetched
- * by its own signed URL.
- */
-export const QuarkDownloadEntrySchema = z.object({
-  fid: z.string().describe(
-    "Quark id of this file. Fetch it alone to refresh " +
-      "the URL later.",
-  ),
-  name: z.string().describe("File name."),
-  relativePath: z.string().describe(
-    "Path relative to the requested folder, using `/` separators. Empty " +
-      "string for a file requested directly by fid.",
-  ),
-  dir: z.boolean().describe("True for a folder entry inside the manifest."),
-  sizeBytes: z.number().int().nonnegative().nullable().describe(
-    "Exact size in bytes when Quark reports it.",
-  ),
-  md5: z.string().nullable().describe("MD5 checksum when Quark supplies one."),
-  downloadUrl: z.string().nullable().describe(
-    "Fresh, short-lived, signed direct download URL, or null when the entry " +
-      "is a folder or its URL was not resolved in this call. Treat it as a " +
-      "secret.",
-  ),
-});
-
-export const QuarkDownloadFileResultSchema = z.object({
-  fid: z.string().describe("Quark id of the requested file or folder."),
-  name: z.string().describe("Stored file/folder name."),
-  dir: z.boolean().describe(
-    "False when a single file was resolved; true when Quark returned a " +
-      "folder manifest.",
-  ),
-  sizeBytes: z.number().int().nonnegative().nullable().describe(
-    "Total size in bytes: the file itself, or the sum of the folder's files.",
-  ),
-  md5: z.string().nullable().describe(
-    "MD5 checksum for a single file; null for folders.",
-  ),
-  downloadUrl: z.string().nullable().describe(
-    "Signed URL of the single requested file; null for folders, whose files " +
-      "each carry their own URL in `entries`.",
-  ),
-  taskId: z.string().nullable().describe(
-    "Quark task id that scanned the folder; null for a plain file.",
-  ),
-  total: z.number().int().nonnegative().describe(
-    "Number of files found (1 for a single file).",
-  ),
-  urlsResolved: z.number().int().nonnegative().describe(
-    "How many entries carry a `downloadUrl`. Folders beyond `limit` are " +
-      "returned without a URL.",
-  ),
-  truncated: z.boolean().describe(
-    "True when the folder held more files than `limit`, so some entries have " +
-      "no `downloadUrl`.",
-  ),
-  entries: z.array(QuarkDownloadEntrySchema).describe(
-    "Flattened file list. Always includes the requested file itself for the " +
-      "single-file case.",
-  ),
-  raw: RawObjectSchema.optional(),
-});
-
 // ─── Cloud tasks (transport center) ──────────────────────────────────────────
 
 /** Numeric `status` codes used by `/1/clouddrive/task/*`. */
@@ -275,7 +201,7 @@ export const QuarkTaskStatusFilterSchema = z.enum([
   "fail",
   "pause",
 ]).describe(
-  "Status filter for `GET /task-list`. `all` omits the filter entirely.",
+  "Status filter for `GET /cloud-tasks`. `all` omits the filter entirely.",
 );
 
 export const QuarkTaskOperationSchema = z.enum(["resume", "delete"])
@@ -285,7 +211,7 @@ export const QuarkTaskOperationSchema = z.enum(["resume", "delete"])
   );
 
 export const QuarkTaskSchema = z.object({
-  taskId: z.string().describe("Quark task id; pass it to POST /task-list."),
+  taskId: z.string().describe("Quark task id; pass it to PATCH /cloud-tasks."),
   taskType: z.number().int().describe(
     "Quark's numeric task type (see `taskTypeName`).",
   ),
@@ -359,10 +285,6 @@ export const QuarkUpdateTaskResultSchema = z.object({
 
 // ─── Local downloads (the app's own downloader) ──────────────────────────────
 //
-// `GET /download-file` only resolves signed URLs. `POST /download-file` hands
-// the same `fid` to the Quark app's built-in downloader, which writes the file
-// into the app's Downloads folder — the run-time counterpart of the UI's
-// "下载" button, minus the UI.
 
 /**
  * Numeric `status` codes on the app's download-task objects. There is no
@@ -396,7 +318,7 @@ export const QuarkDownloadStatusSchema = z.enum([
 
 export const QuarkDownloadTaskSchema = z.object({
   taskId: z.string().describe(
-    "Local task id; pass it to POST /download-task to pause, resume or cancel.",
+    "Local task id; pass it to PATCH /downloads to pause, resume or cancel.",
   ),
   name: z.string().describe("File or folder name being downloaded."),
   status: QuarkDownloadStatusSchema,
@@ -435,19 +357,16 @@ export const QuarkDownloadStartResultSchema = z.object({
   name: z.string().describe("Stored file/folder name."),
   dir: z.boolean().describe(
     "True when a whole folder was queued; the app then writes every " +
-      "descendant below `savePath`.",
+      "descendant below Downloads.",
   ),
   sizeBytes: z.number().int().nonnegative().nullable().describe(
-    "Folder size as reported by the drive API (null when unknown).",
+    "Size as reported by the drive API (null when unknown).",
   ),
   directory: z.string().describe(
-    "Directory the download was pointed at, exactly as the app sees it " +
-      "(`toDir` when given, otherwise the app's own Downloads folder). The " +
-      "app appends the entry name itself — read the resulting path back from " +
-      "GET /download-task.",
+    "The app's Downloads directory. Query GET /downloads with the taskId for the final path.",
   ),
   taskId: z.string().describe(
-    "Id of the created local task; read it back with GET /download-task.",
+    "Id of the created local task; read it back with GET /downloads.",
   ),
   raw: RawObjectSchema.optional(),
 });
@@ -472,8 +391,7 @@ export const QuarkDownloadOperationSchema = z.enum([
   "cancel",
 ]).describe(
   "`pause`/`resume` control the transfer engine; `cancel` stops the task, " +
-    "removes it from the app's list, and deletes the `.qkdownloading` partial " +
-    "so no half-written file is left behind.",
+    "removes it from the app's list. Partial cleanup is best effort.",
 );
 
 export const QuarkDownloadControlResultSchema = z.object({
@@ -488,36 +406,23 @@ export const QuarkDownloadControlResultSchema = z.object({
 
 // ─── Share import ────────────────────────────────────────────────────────────
 
-/**
- * A Quark share URL (`https://pan.quark.cn/s/<id>`, optional `?pwd=`) or a
- * bare share id. Validated in the contract so a malformed share is rejected
- * with HTTP 400 instead of reaching Quark.
- */
-export const QuarkShareUrlSchema = z.string().min(1).refine(
-  (value) =>
-    /(?:^|\/)s\/[A-Za-z0-9_-]+/.test(value) ||
-    /^[A-Za-z0-9_-]+$/.test(value.trim()),
-  "share must be a https://pan.quark.cn/s/<id> URL or a bare share id",
-).describe("Quark share URL or bare share id.");
+export const QuarkShareUrlSchema = z.string().trim().regex(
+  /^(?:[A-Za-z0-9_-]+|https:\/\/pan\.quark\.cn\/s\/[A-Za-z0-9_-]+\/?(?:[?#][^\s]*)?)$/,
+  "Use a https://pan.quark.cn/s/<id> URL or a bare share ID",
+);
 
-export const QuarkImportShareLinkResultSchema = z.object({
-  url: z.string().describe("The share URL that was imported."),
-  pwdId: z.string().describe("Quark share id parsed from the URL."),
-  toDirFid: z.string().describe(
-    "Destination folder id inside the drive where the share was saved. " +
-      "Quark defaults to the `来自：分享` folder.",
-  ),
-  savedFids: z.array(z.string()).describe(
-    "Ids of the entries the save created in `toDirFid` (may be empty when " +
-      "Quark reused existing entries).",
-  ),
-  taskId: z.string().nullable().describe(
-    "Quark save task id, useful for polling progress.",
-  ),
-  taskStatus: QuarkTaskStatusSchema.nullable().describe(
-    "Final state of the save task; null when Quark returned no task.",
-  ),
-  raw: RawObjectSchema.optional(),
+export const QuarkShareSubmissionSchema = z.object({
+  taskId: z.string().min(1),
+  toDirFid: z.string(),
+  status: z.literal("submitted"),
+});
+
+export const QuarkShareImportSchema = z.object({
+  taskId: z.string().min(1),
+  status: z.enum(["pending", "completed", "failed", "paused"]),
+  savedFids: z.array(z.string()).describe("IDs reported by Quark; may be empty."),
+  nextRetryIndex: z.number().int().nonnegative().nullable(),
+  error: z.string().nullable(),
 });
 
 // ─── Account / login ─────────────────────────────────────────────────────────
@@ -563,19 +468,6 @@ export const BrowserQueueStatusSchema = z.object({
 
 // ─── Runtime configuration/status (@quark/service backend) ────────────────────
 
-export const GuardOperationSchema = z.enum([
-  "userInfo",
-  "listFile",
-  "fileInfo",
-  "downloadFile",
-  "startDownload",
-  "downloadTask",
-  "listTask",
-  "updateTask",
-  "importShareLink",
-]);
-export type GuardOperation = z.infer<typeof GuardOperationSchema>;
-
 export const RuntimeConfigSchema = z.object({
   enabled: z.boolean().describe("Whether the idle monitor is enabled."),
   checkIntervalMs: z.number().int().min(1_000).max(3_600_000),
@@ -585,7 +477,6 @@ export const RuntimeConfigSchema = z.object({
   stopAfterMs: z.number().int().nonnegative().max(7 * 86_400_000),
   stopWhenLoggedOut: z.boolean(),
   stopWhenUnhealthy: z.boolean(),
-  requireLoginFor: z.array(GuardOperationSchema),
 });
 
 export const RuntimeConfigPatchSchema = RuntimeConfigSchema.partial();
@@ -674,10 +565,6 @@ export type QuarkTaskStatusFilter = z.infer<typeof QuarkTaskStatusFilterSchema>;
 export type QuarkTaskOperation = z.infer<typeof QuarkTaskOperationSchema>;
 export type QuarkTaskCounts = z.infer<typeof QuarkTaskCountsSchema>;
 export type BrowserQueueStatus = z.infer<typeof BrowserQueueStatusSchema>;
-export type QuarkDownloadFileResult = z.infer<
-  typeof QuarkDownloadFileResultSchema
->;
-export type QuarkDownloadEntry = z.infer<typeof QuarkDownloadEntrySchema>;
 export type QuarkDownloadStatus = z.infer<typeof QuarkDownloadStatusSchema>;
 export type QuarkDownloadTask = z.infer<typeof QuarkDownloadTaskSchema>;
 export type QuarkDownloadStartResult = z.infer<
@@ -690,9 +577,8 @@ export type QuarkDownloadOperation = z.infer<
 export type QuarkDownloadControlResult = z.infer<
   typeof QuarkDownloadControlResultSchema
 >;
-export type QuarkImportShareLinkResult = z.infer<
-  typeof QuarkImportShareLinkResultSchema
->;
+export type QuarkShareSubmission = z.infer<typeof QuarkShareSubmissionSchema>;
+export type QuarkShareImport = z.infer<typeof QuarkShareImportSchema>;
 export type QuarkUpdateTaskResult = z.infer<
   typeof QuarkUpdateTaskResultSchema
 >;

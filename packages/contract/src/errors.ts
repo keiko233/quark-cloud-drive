@@ -1,8 +1,7 @@
 import type { ErrorMap } from "@orpc/contract";
 
 /**
- * Shared error map for both contracts. The implementers (@quark/manager and
- * @quark/service) use `errors.INTERNAL_SERVER_ERROR` etc. in their error-handling
+ * Errors shared by the REST and MCP adapters. The service use `errors.INTERNAL_SERVER_ERROR` etc. in their error-handling
  * middleware, and clients can catch these by code.
  */
 export const sharedErrorMap = {
@@ -10,6 +9,8 @@ export const sharedErrorMap = {
     status: 500,
     message: "Internal Server Error",
   },
+  UNAUTHORIZED: { status: 401, message: "Quark sign-in required" },
+  BAD_GATEWAY: { status: 502, message: "Quark API request failed" },
   NOT_FOUND: {
     status: 404,
     message: "Not Found",

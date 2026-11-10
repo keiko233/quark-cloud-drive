@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import type { QuarkFileInfo } from "@quark/contract/schemas";
 import {
   asObjectOrNull,
@@ -7,7 +7,7 @@ import {
   readFiniteNumber,
   readString,
   requestQuarkApi,
-} from "./renderer-http.ts";
+} from "./http.ts";
 
 /** Quark's drive root fid. */
 export const ROOT_FID = "0";
@@ -63,11 +63,11 @@ export function parseQuarkFileInfoData(data: unknown): QuarkFileInfoEntry {
   };
 }
 
-export async function fetchQuarkFileInfoInBrowser(
-  page: Page,
+export async function fetchQuarkFileInfo(
+  transport: QuarkTransport,
   fid: string,
 ): Promise<QuarkFileInfoEntry> {
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url: buildQuarkFileInfoUrl(fid),
     timeoutMs: FILE_INFO_TIMEOUT_MS,
   });

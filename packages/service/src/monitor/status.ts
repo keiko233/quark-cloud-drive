@@ -53,8 +53,7 @@ export function makeRuntimeStatus(input: RuntimeStatusInput): RuntimeStatus {
     input.login,
     input.queue,
   );
-  const blocked = input.login === "logged_out" &&
-    input.config.requireLoginFor.length > 0;
+  const blocked = input.login === "logged_out";
   return {
     generatedAt: Date.now(),
     process: input.process,

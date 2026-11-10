@@ -10,10 +10,16 @@ import type {
 } from "@quark/contract/schemas";
 import { EventPublisher } from "@orpc/server";
 import { log } from "@quark/config";
-import { getManager } from "@quark/manager";
-import { getOperationQueue } from "@quark/drive";
-import { readLoginStateRaw } from "@quark/drive";
-import { getRuntimeConfig } from "@quark/drive";
+import { processManager } from "@quark/manager";
+import {
+  fetchQuarkTaskCounts,
+  getOperationQueue,
+  getQuarkTransport,
+  getRuntimeConfig,
+  hasActiveDownloads,
+  readLoginStateRaw,
+} from "@quark/drive";
+import { hasDriveRequests } from "../guard.ts";
 import { makeRuntimeStatus, saveRuntimeStatus } from "./status.ts";
 
 export interface IdleConfig {
@@ -52,7 +58,7 @@ export function decideIdleAction(
     return { action: "none" };
   }
   if (
-    state === "running_minimized" && config.stopAfterMs > 0 &&
+    (state === "running_minimized" || state === "running_visible") && config.stopAfterMs > 0 &&
     idleForMs >= config.stopAfterMs
   ) {
     return { action: "stop", reason: `idle ${idleForMs}ms ≥ stopAfterMs` };
@@ -89,6 +95,7 @@ export class Sleeper {
   private lastDecision: string | null = null;
   private lastReason: string | null = null;
   private lastError: string | null = null;
+  private loginGraceUntil = 0;
   private fixedConfig: IdleConfig | null;
 
   constructor(config?: IdleConfig) {
@@ -110,20 +117,11 @@ export class Sleeper {
       stopAfterMs: this.fixedConfig.stopAfterMs,
       stopWhenLoggedOut: this.fixedConfig.stopWhenLoggedOut ?? false,
       stopWhenUnhealthy: this.fixedConfig.stopWhenUnhealthy ?? false,
-      requireLoginFor: [
-        "userInfo",
-        "listFile",
-        "fileInfo",
-        "downloadFile",
-        "listTask",
-        "updateTask",
-        "importShareLink",
-      ],
     };
   }
 
   private async probe(config: RuntimeConfig): Promise<ProbeResult> {
-    const result = await getManager().status().then(
+    const result = await processManager.status().then(
       (process) => ({ process, error: null as string | null }),
       (error) => ({
         process: null,
@@ -147,39 +145,36 @@ export class Sleeper {
       ? "unknown"
       : readLoginStateRaw();
     const now = Date.now();
-    const cdpActive = process.cdpActivityAt !== null &&
+    const recentActivity = process.cdpActivityAt !== null &&
       now - process.cdpActivityAt < config.activityWindowMs;
 
-    if (
-      login === "logged_in" && process.state !== "stopped" &&
-      process.state !== "starting" &&
-      (this.lastTaskProbeAt === null ||
-        now - this.lastTaskProbeAt >= config.taskProbeIntervalMs)
-    ) {
-      this.lastTaskProbeAt = now;
+    let localDownloadsActive = false;
+    if (login === "logged_in") {
+      if (this.lastTaskProbeAt === null ||
+          now - this.lastTaskProbeAt >= config.taskProbeIntervalMs) {
+        this.lastTaskProbeAt = now;
+        try {
+          const { counts } = await fetchQuarkTaskCounts(getQuarkTransport());
+          this.runningTasks = counts.todo + counts.running;
+          this.tasksCheckedAt = Date.now();
+        } catch (error) {
+          this.lastError = error instanceof Error ? error.message : String(error);
+        }
+      }
       try {
-        // Read active cloud tasks (todo + running) from the task API. This is
-        // a plain JSON read: no transport tab, no DOM, no local downloader.
-        const count = await getOperationQueue().run(
-          "taskListProbe",
-          { key: "monitor:taskList", priority: 10 },
-          async () => {
-            const { fetchQuarkTaskCountsInBrowser, getQuarkPage } =
-              await import("@quark/drive");
-            const page = await getQuarkPage();
-            const { counts } = await fetchQuarkTaskCountsInBrowser(page);
-            return counts.todo + counts.running;
-          },
-        );
-        this.runningTasks = count;
-        this.tasksCheckedAt = Date.now();
+        localDownloadsActive = await hasActiveDownloads();
       } catch (error) {
+        // A broken local queue probe cannot tell us that it is safe to stop.
+        localDownloadsActive = true;
         this.lastError = error instanceof Error ? error.message : String(error);
       }
+    } else {
+      this.runningTasks = this.tasksCheckedAt = this.lastTaskProbeAt = null;
     }
 
-    const busy = process.state === "starting" || cdpActive ||
-      (this.runningTasks !== null && this.runningTasks > 0);
+    const busy = process.state === "starting" || recentActivity ||
+      hasDriveRequests() || getOperationQueue().status().total > 0 ||
+      localDownloadsActive || (this.runningTasks ?? 0) > 0;
     if (busy) this.idleStart = now;
     else if (this.idleStart === null) this.idleStart = now;
     const idleForMs = busy ? 0 : now - this.idleStart;
@@ -207,6 +202,10 @@ export class Sleeper {
 
   stop(): void {
     this.running = false;
+  }
+
+  holdForLogin(): void {
+    this.loginGraceUntil = Date.now() + 2 * 60_000;
   }
 
   /** Explicit manager start/QR access clears an intentional stop marker. */
@@ -249,6 +248,7 @@ export class Sleeper {
     this.events.publish("status", { status });
 
     if (!config.enabled || probe.state === "starting") return;
+    if (probe.login !== "logged_in" && Date.now() < this.loginGraceUntil) return;
 
     let decision: IdleDecision = { action: "none" };
     if (config.stopWhenLoggedOut && probe.login === "logged_out") {
@@ -269,6 +269,7 @@ export class Sleeper {
       );
     }
     if (decision.action === "none") return;
+    if (decision.action !== "restore" && (hasDriveRequests() || getOperationQueue().status().total > 0)) return;
 
     this.lastDecision = decision.action;
     this.lastReason = decision.reason;
@@ -287,8 +288,10 @@ export class Sleeper {
     this.events.publish("status", { status: markedStatus });
     log.info(`sleeper: ${decision.action} (${decision.reason})`);
     this.events.publish("decision", { ...decision, at: Date.now() });
-    if (decision.action === "minimize") await getManager().minimize();
-    if (decision.action === "stop") await getManager().stop();
-    if (decision.action === "restore") await getManager().restore();
+    // Requests may have arrived while persisting the status snapshot.
+    if (decision.action !== "restore" && (hasDriveRequests() || getOperationQueue().status().total > 0)) return;
+    if (decision.action === "minimize") await processManager.minimize();
+    if (decision.action === "stop") await processManager.stop();
+    if (decision.action === "restore") await processManager.restore();
   }
 }

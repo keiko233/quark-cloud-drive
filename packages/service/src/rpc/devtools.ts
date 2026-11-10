@@ -14,7 +14,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import { CDP_URL } from "@quark/config";
+import { CDP_PROXY_PORT } from "@quark/config";
 import { log } from "@quark/config";
 import type { DevtoolsData } from "./ws.ts";
 
@@ -150,14 +150,7 @@ const PICKER_PAGE = `<!DOCTYPE html>
 `;
 
 function resolveCdpTarget(): { hostname: string; port: number } {
-  try {
-    const url = new URL(CDP_URL);
-    const port = url.port ? Number(url.port) : 9223;
-    return { hostname: url.hostname, port };
-  } catch {
-    log.warn(`CDP_URL invalid (${CDP_URL}), falling back to server:9223`);
-    return { hostname: "server", port: 9223 };
-  }
+  return { hostname: "127.0.0.1", port: CDP_PROXY_PORT };
 }
 
 export const devtoolsApp = new Hono();
@@ -291,5 +284,5 @@ devtoolsApp.get("/devtools/*", (c) => {
 });
 
 log.debug(
-  `DevTools page: /devtools (CDP → ${CDP_URL}, ws bridge + http proxy under /devtools)`,
+  `DevTools page: /devtools (CDP → 127.0.0.1:${CDP_PROXY_PORT}, ws bridge + http proxy under /devtools)`,
 );

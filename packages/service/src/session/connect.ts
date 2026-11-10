@@ -1,132 +1,111 @@
-import { chromium } from "playwright";
+import { chromium, type Browser, type Page } from "playwright";
 import { CDP_URL, log } from "@quark/config";
 import {
+  clearBrowser,
+  getBrowser,
   QUARK_HOME_PAGE_URL,
   QUARK_LOGIN_PAGE_URL,
+  readLoginStateRaw,
   setBrowser,
 } from "@quark/drive";
-import { autoWakeBlockReason, ensureQuarkAwake } from "../monitor/wake.ts";
 
-export async function connect(): Promise<void> {
-  // Always wake before connecting: if the server idle-stopped Quark while we
-  // were disconnected, /start brings it back up and we wait for the CDP port
-  // to come online. Idempotent if Quark is already running.
-  const blocked = await autoWakeBlockReason();
-  if (blocked) {
-    throw new Error(`automatic wake is blocked: ${blocked}`);
-  }
-  log.debug("ensuring Quark is awake before connect");
-  await ensureQuarkAwake();
+let pending: Promise<void> | undefined;
 
-  log.debug(`connecting to CDP at ${CDP_URL}...`);
-
-  const browser = await chromium.connectOverCDP(CDP_URL);
-  log.debug(`connected to CDP, browser version: ${browser.version()}`);
-
+export function hasAttachedSession(): boolean {
   try {
-    await waitForRenderer(browser);
+    return getBrowser().isConnected() && readLoginStateRaw() !== "unknown";
+  } catch {
+    return false;
+  }
+}
+
+/** Attach once to the running client, regardless of which adapter asked. */
+export function connect(): Promise<void> {
+  if (pending) return pending;
+  pending = attach().finally(() => { pending = undefined; });
+  return pending;
+}
+
+async function attach(): Promise<void> {
+  let browser: Browser | undefined;
+  try {
+    const existing = getBrowser();
+    if (existing.isConnected()) browser = existing;
+  } catch {
+    // No connection has been installed yet.
+  }
+  if (browser) {
+    if (readLoginStateRaw() === "unknown") await waitForRenderer(browser);
+    return;
+  }
+
+  const attached = await chromium.connectOverCDP(CDP_URL, { timeout: 5_000, noDefaults: true });
+  try {
+    await waitForRenderer(attached);
+    if (!attached.isConnected()) throw new Error("Quark disconnected during startup");
+    attached.once("disconnected", () => {
+      clearBrowser(attached);
+      log.debug("Quark CDP disconnected");
+    });
+    setBrowser(attached);
+    const trackPage = (page: Page) => {
+      page.on("crash", () => {
+        if (![QUARK_HOME_PAGE_URL, QUARK_LOGIN_PAGE_URL].some((url) => page.url().includes(url))) return;
+        log.warn("Quark renderer crashed; dropping the stale attachment");
+        clearBrowser(attached);
+        void attached.close().catch(() => {});
+      });
+    };
+    for (const context of attached.contexts()) {
+      for (const page of context.pages()) trackPage(page);
+      context.on("page", trackPage);
+    }
   } catch (error) {
-    await browser.close().catch(() => {});
+    await attached.close().catch(() => {});
     throw error;
   }
-  setBrowser(browser);
-
-  browser.on("disconnected", () => {
-    setBrowser(null);
-    log.debug("CDP connection disconnected, will reconnect...");
-  });
-
-  const pages = browser.contexts()[0]!.pages();
-
-  for (const page of pages) {
-    const title = await page.title().catch(() => "(unavailable)");
-    log.debug(`attached to page: [${title}] ${page.url()}`);
-
-    page.on("request", (req) => {
-      log.trace("REQ", req.method(), req.url());
-    });
-
-    page.on("response", (res) => {
-      log.trace("RES", res.status(), res.url());
-    });
-
-    page.on("close", () => log.debug(`page closed: [${title}] ${page.url()}`));
-  }
-
-  // wait until browser is disconnected
-  if (!browser.isConnected()) return;
-  await new Promise<void>((resolve) => {
-    browser.on("disconnected", () => resolve());
-  });
 }
 
-/** CDP can listen while Wine still shows an empty white renderer. */
+/** Home readiness is the native API, not window pixels or DOM content. */
 export async function waitForRenderer(
-  browser: Awaited<ReturnType<typeof chromium.connectOverCDP>>,
-  { timeoutMs = 30_000, pollMs = 2_000 } = {},
+  browser: Browser,
+  { timeoutMs = 30_000, pollMs = 500 } = {},
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  let reason = "home renderer has not opened";
-  while (Date.now() < deadline && browser.isConnected()) {
-    const page = browser.contexts()[0]?.pages().find((candidate) =>
-      [QUARK_HOME_PAGE_URL, QUARK_LOGIN_PAGE_URL].some((url) =>
-        candidate.url().includes(url)
-      )
-    );
-    if (page) {
+  while (browser.isConnected() && Date.now() < deadline) {
+    const pages = browser.contexts()[0]?.pages() ?? [];
+    if (pages.some((page) => page.url().includes(QUARK_LOGIN_PAGE_URL))) return;
+
+    const home = pages.find((page) => page.url().includes(QUARK_HOME_PAGE_URL));
+    if (home) {
       try {
-        const bodyReady = await withTimeout(
-          page.evaluate(() => (document.body?.querySelectorAll("*").length ?? 0) > 5),
-          2_000,
-        );
-        if (bodyReady) {
-          const png = await page.screenshot({ type: "png", timeout: 5_000 });
-          const painted = await withTimeout(
-            page.evaluate(async (base64) => {
-              const image = new Image();
-              image.src = `data:image/png;base64,${base64}`;
-              await image.decode();
-              const canvas = document.createElement("canvas");
-              canvas.width = 32;
-              canvas.height = 24;
-              const context = canvas.getContext("2d")!;
-              context.drawImage(image, 0, 0, 32, 24);
-              const pixels = context.getImageData(0, 0, 32, 24).data;
-              let colored = 0;
-              for (let i = 0; i < pixels.length; i += 4) {
-                if (
-                  pixels[i]! < 245 || pixels[i + 1]! < 245 ||
-                  pixels[i + 2]! < 245
-                ) colored++;
-              }
-              return colored;
-            }, png.toString("base64")),
-            5_000,
-          );
-          if (painted >= 8) return;
-          reason = `renderer screenshot is blank (${painted}/768 non-white samples)`;
-        } else {
-          reason = "renderer DOM is empty";
-        }
-      } catch (error) {
-        reason = `renderer probe failed: ${error instanceof Error ? error.message : String(error)}`;
+        const ready = await bounded(home.evaluate(() => {
+          const store = (globalThis as typeof globalThis & {
+            store?: { dispatch?: { downloadTask?: { create?: unknown } }; getState?: unknown };
+          }).store;
+          return typeof store?.getState === "function" &&
+            typeof store.dispatch?.downloadTask?.create === "function";
+        }), Math.min(2_000, Math.max(1, deadline - Date.now())));
+        if (ready) return;
+      } catch {
+        // The document may be navigating or the renderer may still be booting.
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    await Bun.sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
   }
-  throw new Error(`Quark renderer not ready after ${timeoutMs}ms: ${reason}`);
+  throw new Error("Quark login window or native download API did not become ready");
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+async function bounded<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       promise,
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("pixel probe timed out")), ms);
+        timer = setTimeout(() => reject(new Error("native API readiness probe timed out")), timeoutMs);
       }),
     ]);
   } finally {
-    if (timer) clearTimeout(timer);
+    clearTimeout(timer);
   }
 }

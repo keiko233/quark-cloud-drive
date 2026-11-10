@@ -4,15 +4,12 @@ import {
 } from "node:assert/strict";
 import { test } from "bun:test";
 import { clientContract } from "./client.ts";
-import { serverContract } from "./server.ts";
 import {
   QuarkDownloadControlResultSchema,
-  QuarkDownloadFileResultSchema,
   QuarkDownloadQueueSchema,
   QuarkDownloadStartResultSchema,
   QuarkFileInfoSchema,
   QuarkFileListSchema,
-  QuarkImportShareLinkResultSchema,
   QuarkLoginStatusSchema,
   QuarkShareUrlSchema,
   QuarkTaskListSchema,
@@ -38,189 +35,8 @@ function proc(contract: unknown, key: string): AnyContractProc {
   return p as AnyContractProc;
 }
 
-function route(contract: unknown, key: string): Record<string, unknown> {
-  const r = proc(contract, key)["~orpc"].route;
-  const out: Record<string, unknown> = { method: r.method, path: r.path };
-  if (r.inputStructure !== undefined) out.inputStructure = r.inputStructure;
-  return out;
-}
-
-test("serverContract exposes the full thin-manager surface", () => {
-  const keys = [
-    "healthz",
-    "status",
-    "start",
-    "stop",
-    "restart",
-    "minimize",
-    "restore",
-    "events",
-  ];
-  assertEquals(Object.keys(serverContract), keys);
-  assertEquals(route(serverContract, "healthz"), {
-    method: "GET",
-    path: "/healthz",
-  });
-  assertEquals(route(serverContract, "start"), {
-    method: "POST",
-    path: "/start",
-  });
-  assertEquals(route(serverContract, "events"), {
-    method: "GET",
-    path: "/events",
-  });
-  assertEquals(route(serverContract, "status"), {
-    method: "GET",
-    path: "/status",
-  });
-});
-
-test("serverContract events is an event iterator", () => {
-  const out = proc(serverContract, "events")["~orpc"].outputSchema as {
-    getEventIteratorSchemaDetails?: unknown;
-  };
-  // The event-iterator schema carries its own marker; absence of a plain
-  // object schema with '~standard' is enough to distinguish it from the
-  // regular ServerStatusSchema output used elsewhere.
-  assertEquals(typeof out, "object");
-});
-
-test("clientContract exposes the full business surface", () => {
-  const keys = [
-    "config",
-    "updateConfig",
-    "status",
-    "version",
-    "queueStatus",
-    "events",
-    "loginQRCode",
-    "loginStatus",
-    "userInfo",
-    "listFile",
-    "fileInfo",
-    "downloadFile",
-    "startDownload",
-    "downloadTaskList",
-    "updateDownloadTask",
-    "taskList",
-    "updateTask",
-    "importShareLink",
-    "manager",
-  ];
-  assertEquals(Object.keys(clientContract), keys);
-  assertEquals(route(clientContract, "version"), {
-    method: "GET",
-    path: "/version",
-  });
-  assertEquals(route(clientContract, "fileInfo"), {
-    method: "GET",
-    path: "/file-info",
-    inputStructure: "detailed",
-  });
-  // GET /download-file only mints URLs; POST on the same path downloads.
-  assertEquals(route(clientContract, "downloadFile"), {
-    method: "GET",
-    path: "/download-file",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "startDownload"), {
-    method: "POST",
-    path: "/download-file",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "downloadTaskList"), {
-    method: "GET",
-    path: "/download-task",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "updateDownloadTask"), {
-    method: "POST",
-    path: "/download-task",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "taskList"), {
-    method: "GET",
-    path: "/task-list",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "updateTask"), {
-    method: "POST",
-    path: "/task-list",
-    inputStructure: "detailed",
-  });
-  assertEquals(route(clientContract, "listFile"), {
-    method: "GET",
-    path: "/list-file",
-    inputStructure: "detailed",
-  });
-});
-
-// The nested manager router mirrors the server contract under /manager/* with
-// MCP opt-in on every control procedure (events stays an SSE stream, no tool).
-test("clientContract manager router mirrors the manager surface", () => {
-  const manager = (clientContract as Record<string, unknown>).manager as Record<
-    string,
-    unknown
-  >;
-  const keys = [
-    "healthz",
-    "status",
-    "start",
-    "stop",
-    "restart",
-    "minimize",
-    "restore",
-    "events",
-  ];
-  assertEquals(Object.keys(manager), keys);
-  assertEquals(route(manager, "status"), {
-    method: "GET",
-    path: "/manager/status",
-  });
-  assertEquals(route(manager, "start"), {
-    method: "POST",
-    path: "/manager/start",
-  });
-  assertEquals(route(manager, "minimize"), {
-    method: "POST",
-    path: "/manager/minimize",
-  });
-  assertEquals(route(manager, "events"), {
-    method: "GET",
-    path: "/manager/events",
-  });
-
-  for (const key of keys.filter((k) => k !== "events")) {
-    const meta = (manager[key] as { "~orpc": { meta?: unknown } })["~orpc"]
-      .meta as { mcp?: { tool?: boolean } };
-    assertEquals(meta.mcp?.tool, true, `expected ${key} to opt into MCP`);
-  }
-  const eventsMeta = (manager.events as { "~orpc": { meta?: unknown } })[
-    "~orpc"
-  ].meta as { mcp?: { tool?: boolean } };
-  assertEquals(eventsMeta?.mcp?.tool, undefined);
-});
-
-test("client write operations carry detailed inputStructure", () => {
-  for (
-    const key of [
-      "downloadFile",
-      "fileInfo",
-      "taskList",
-      "updateTask",
-      "importShareLink",
-    ]
-  ) {
-    assertEquals(
-      route(clientContract, key).inputStructure,
-      "detailed",
-      `expected detailed inputStructure on ${key}`,
-    );
-  }
-});
-
 test("listFile is a plain JSON file API lookup", () => {
-  const definition = proc(clientContract, "listFile")["~orpc"];
+  const definition = proc(clientContract, "listFiles")["~orpc"];
   const output = definition.outputSchema as {
     getEventIteratorSchemaDetails?: unknown;
   };
@@ -241,74 +57,6 @@ test("listFile is a plain JSON file API lookup", () => {
     input.safeParse({ query: { path: "Movies" } }).success,
     false,
   );
-});
-
-test("downloadFile is fid-based and returns plain JSON", () => {
-  const definition = proc(clientContract, "downloadFile")["~orpc"];
-  const input = definition.inputSchema as {
-    safeParse(value: unknown): { success: boolean };
-  };
-  assertEquals(input.safeParse({ query: { fid: "file-fid" } }).success, true);
-  assertEquals(
-    input.safeParse({ query: { path: "Movies/a.mp4" } }).success,
-    false,
-  );
-
-  // Plain Zod output: no oRPC event-iterator details.
-  const output = definition.outputSchema as {
-    getEventIteratorSchemaDetails?: unknown;
-  };
-  assertEquals(output.getEventIteratorSchemaDetails, undefined);
-
-  const parsed = QuarkDownloadFileResultSchema.parse({
-    fid: "file-fid",
-    name: "a.mp4",
-    dir: false,
-    sizeBytes: 1024,
-    md5: "d41d8cd98f00b204e9800998ecf8427e",
-    downloadUrl: "https://example.invalid/signed",
-    taskId: null,
-    total: 1,
-    urlsResolved: 1,
-    truncated: false,
-    entries: [{
-      fid: "file-fid",
-      name: "a.mp4",
-      relativePath: "",
-      dir: false,
-      sizeBytes: 1024,
-      md5: "d41d8cd98f00b204e9800998ecf8427e",
-      downloadUrl: "https://example.invalid/signed",
-    }],
-  });
-  assertEquals(parsed.fid, "file-fid");
-  assertEquals(parsed.taskId, null);
-  assertEquals(parsed.entries[0].downloadUrl, "https://example.invalid/signed");
-
-  // A folder result has no single URL and may leave files unresolved.
-  const folder = QuarkDownloadFileResultSchema.parse({
-    fid: "dir-fid",
-    name: "folder",
-    dir: true,
-    sizeBytes: 2048,
-    md5: null,
-    downloadUrl: null,
-    taskId: "task-1",
-    total: 3,
-    urlsResolved: 2,
-    truncated: true,
-    entries: [{
-      fid: "a",
-      name: "a.mkv",
-      relativePath: "Season 1/a.mkv",
-      dir: false,
-      sizeBytes: 1024,
-      md5: null,
-      downloadUrl: "https://example.invalid/a",
-    }],
-  });
-  assertEquals(folder.dir, true);
-  assertEquals(folder.truncated, true);
 });
 
 test("fileInfo, taskList and updateTask schemas round-trip", () => {
@@ -365,27 +113,13 @@ test("fileInfo, taskList and updateTask schemas round-trip", () => {
   );
 });
 
-test("importShareLink result is fid-based", () => {
-  assertEquals(
-    QuarkImportShareLinkResultSchema.parse({
-      url: "https://pan.quark.cn/s/abc",
-      pwdId: "abc",
-      toDirFid: "share-inbox",
-      savedFids: ["saved-fid"],
-      taskId: "task-1",
-      taskStatus: "finish",
-    }).toDirFid,
-    "share-inbox",
-  );
-});
-
-test("importShareLink input accepts a share URL or bare id, rejects junk", () => {
+test("share save input accepts a share URL or bare id, rejects junk", () => {
   assertEquals(
     QuarkShareUrlSchema.parse("https://pan.quark.cn/s/abc"),
     "https://pan.quark.cn/s/abc",
   );
   assertEquals(QuarkShareUrlSchema.parse("abc123_-XYZ"), "abc123_-XYZ");
-  for (const bad of ["", "  ", "not a url", "https://pan.quark.cn/s/", "!!!"]) {
+  for (const bad of ["", "  ", "not a url", "https://pan.quark.cn/s/", "https://example.org/s/abc", "!!!"]) {
     assertThrows(() => QuarkShareUrlSchema.parse(bad));
   }
 });

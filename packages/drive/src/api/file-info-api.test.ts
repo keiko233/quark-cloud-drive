@@ -3,15 +3,15 @@ import {
   rejects as assertRejects,
 } from "node:assert/strict";
 import { test } from "bun:test";
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import {
   buildQuarkFileInfoUrl,
-  fetchQuarkFileInfoInBrowser,
+  fetchQuarkFileInfo,
   mapQuarkFileInfo,
   parseQuarkFileInfoData,
   ROOT_FID,
 } from "./file-info-api.ts";
-import { QuarkApiError } from "./renderer-http.ts";
+import { QuarkApiError } from "./http.ts";
 
 type JsonObject = Record<string, unknown>;
 
@@ -37,25 +37,13 @@ function infoPayload(
   };
 }
 
-function fakePage(payloads: Record<string, JsonObject>): Page {
-  return {
-    evaluate: (
-      _callback: unknown,
-      argument?: unknown,
-    ): Promise<unknown> => {
-      if (argument && typeof argument === "object" && "url" in argument) {
-        const url = new URL(String((argument as { url: string }).url));
-        const fid = url.searchParams.get("fid") ?? "";
-        const payload = payloads[fid];
-        if (!payload) throw new Error(`unexpected fid ${fid}`);
-        return Promise.resolve({
-          status: 200,
-          text: JSON.stringify(payload),
-        });
-      }
-      return Promise.resolve(undefined);
-    },
-  } as unknown as Page;
+function fakeTransport(payloads: Record<string, JsonObject>): QuarkTransport {
+  return async (request) => {
+    const fid = new URL(request.url).searchParams.get("fid") ?? "";
+    const payload = payloads[fid];
+    if (!payload) throw new Error(`unexpected fid ${fid}`);
+    return { status: 200, text: JSON.stringify(payload) };
+  };
 }
 
 test("buildQuarkFileInfoUrl uses the stable API contract", () => {
@@ -92,14 +80,14 @@ test("parseQuarkFileInfoData rejects incomplete entries", () => {
   }
 });
 
-test("fetchQuarkFileInfoInBrowser reads one fid", async () => {
-  const page = fakePage({
+test("fetchQuarkFileInfo reads one fid", async () => {
+  const page = fakeTransport({
     "movie-fid": infoPayload("movie-fid", "movie.mp4", "folder-fid", false),
   });
-  const entry = await fetchQuarkFileInfoInBrowser(page, "movie-fid");
+  const entry = await fetchQuarkFileInfo(page, "movie-fid");
   assertEquals(entry.parentFid, "folder-fid");
   await assertRejects(
-    () => fetchQuarkFileInfoInBrowser(page, "missing-fid"),
+    () => fetchQuarkFileInfo(page, "missing-fid"),
     Error,
   );
 });

@@ -1,12 +1,7 @@
-/** @quark/manager — Wine/Electron process lifecycle + the CDP proxy. */
-export { ProcessManager } from "./process.ts";
+/** @quark/manager — local Wine lifecycle and the optional diagnostic proxy. */
+import { ProcessManager } from "./process.ts";
+
+export const processManager = new ProcessManager();
+export { ProcessManager };
 export { startCdpProxy } from "./cdp-proxy.ts";
 export { streamManagerEvents } from "./events.ts";
-export {
-  createEmbeddedManager,
-  createHttpManager,
-  getManager,
-  hasManager,
-  setManager,
-} from "./client.ts";
-export type { ManagerApi } from "./client.ts";

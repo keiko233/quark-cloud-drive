@@ -2,6 +2,7 @@ import assert, {
   deepStrictEqual as assertEquals,
 } from "node:assert/strict";
 import { test } from "bun:test";
+import { win32, join } from "node:path";
 import { stat, unlink } from "node:fs/promises";
 
 // Opt-in end-to-end check for the local downloader. It hands one real (small)
@@ -66,19 +67,19 @@ async function getJson<T>(path: string): Promise<T> {
   return await response.json() as T;
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T> {
+async function writeJson<T>(path: string, body: unknown, method = "POST"): Promise<T> {
   const response = await fetch(`${apiUrl}${path}`, {
-    method: "POST",
+    method,
     headers: { "content-type": "application/json", Accept: "application/json" },
     body: JSON.stringify(body),
   });
-  assertEquals(response.status, 200, `POST ${path} -> ${response.status}`);
+  assertEquals(response.status, 200, `${method} ${path} -> ${response.status}`);
   return await response.json() as T;
 }
 
 /** Smallest file reachable from the root, so the transfer finishes fast. */
 async function findSmallestFile(): Promise<FileListItem | null> {
-  const root = await getJson<FileListResult>("/list-file?fid=0");
+  const root = await getJson<FileListResult>("/files?fid=0");
   let best: FileListItem | null = null;
   const keep = (item: FileListItem) => {
     if (item.dir) return;
@@ -88,7 +89,7 @@ async function findSmallestFile(): Promise<FileListItem | null> {
   if (best) return best;
   for (const dir of root.items.filter((item) => item.dir)) {
     const listed = await getJson<FileListResult>(
-      `/list-file?fid=${encodeURIComponent(dir.fid)}`,
+      `/files?fid=${encodeURIComponent(dir.fid)}`,
     );
     listed.items.forEach(keep);
     if (best) return best;
@@ -102,7 +103,7 @@ test.skipIf(!enabled)(
     const target = await findSmallestFile();
     assert(target, "no file available to download");
 
-    const started = await postJson<StartResult>("/download-file", {
+    const started = await writeJson<StartResult>("/downloads", {
       fid: target.fid,
     });
     assertEquals(started.fid, target.fid);
@@ -112,43 +113,35 @@ test.skipIf(!enabled)(
 
     let task: LocalTask | undefined;
     for (let attempt = 0; attempt < 60; attempt++) {
-      const queue = await getJson<QueueResult>("/download-task?raw=true");
+      const queue = await getJson<QueueResult>(`/downloads?taskId=${encodeURIComponent(started.taskId)}`);
       task = queue.tasks.find((entry) => entry.taskId === started.taskId);
       if (task && (task.status === "finish" || task.status === "error")) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    assert(task, "the started task never appeared in /download-task");
+    assert(task, "the started task never appeared in /downloads");
     assertEquals(task.status, "finish");
     assertEquals(task.progressPercent, 100);
     assertEquals(task.sizeBytes, target.sizeBytes);
     assertEquals(task.transferredBytes, target.sizeBytes);
-    assertEquals(task.path !== null, true);
+    assert(task.path, "download task has no final path");
 
-    // The app writes into its Downloads folder, which is the repo's mount.
-    const hostPath = `${hostDownloads}/${started.name}`;
-    let written: number | null = null;
-    try {
-      written = (await stat(hostPath)).size;
-    } catch {
-      written = null;
-    }
-    if (written !== null) {
-      assertEquals(written, target.sizeBytes);
-      await unlink(hostPath);
-    }
+    const hostPath = join(hostDownloads, win32.basename(task.path));
+    assertEquals((await stat(hostPath)).size, target.sizeBytes);
+    await unlink(hostPath);
 
-    const cancelled = await postJson<ControlResult>("/download-task", {
+    const cancelled = await writeJson<ControlResult>("/downloads", {
       taskIds: [started.taskId],
       operation: "cancel",
-    });
+    }, "PATCH");
     assertEquals(cancelled.success, true);
     assertEquals(cancelled.taskIds, [started.taskId]);
     assertEquals(cancelled.operation, "cancel");
 
-    const after = await getJson<QueueResult>("/download-task");
+    const after = await getJson<QueueResult>("/downloads");
     assertEquals(
       after.tasks.some((entry) => entry.taskId === started.taskId),
       false,
     );
   },
+  120_000,
 );

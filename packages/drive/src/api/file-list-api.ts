@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { QuarkTransport } from "./http.ts";
 import type { QuarkFileListItem } from "@quark/contract/schemas";
 import { ROOT_FID } from "./file-info-api.ts";
 import {
@@ -6,7 +6,7 @@ import {
   QuarkApiError,
   readFiniteNumber,
   requestQuarkApi,
-} from "./renderer-http.ts";
+} from "./http.ts";
 
 export const FILE_LIST_API_PAGE_SIZE = 100;
 const FILE_LIST_API_MAX_PAGES = 1_000;
@@ -132,14 +132,14 @@ export function buildQuarkFileListUrl(
   });
 }
 
-export async function fetchQuarkFileListPageInBrowser(
-  page: Page,
+export async function fetchQuarkFileListPage(
+  transport: QuarkTransport,
   fid: string,
   pageNumber = 1,
   pageSize = FILE_LIST_API_PAGE_SIZE,
 ): Promise<QuarkFileListApiPage> {
   const url = buildQuarkFileListUrl(fid, pageNumber, pageSize);
-  const envelope = await requestQuarkApi(page, {
+  const envelope = await requestQuarkApi(transport, {
     url,
     timeoutMs: FILE_LIST_API_TIMEOUT_MS,
   });
@@ -308,28 +308,9 @@ export function mapQuarkFileListItem(
   };
 }
 
-let rendererTimeZone: string | undefined;
-let rendererTimeZoneResolved = false;
-
-async function getRendererTimeZone(page: Page): Promise<string | undefined> {
-  if (rendererTimeZoneResolved) return rendererTimeZone;
-  try {
-    const value = await page.evaluate(() =>
-      Intl.DateTimeFormat().resolvedOptions().timeZone
-    );
-    if (typeof value === "string" && value) {
-      rendererTimeZone = value;
-      rendererTimeZoneResolved = true;
-    }
-  } catch {
-    // Retry on the next list call; the renderer may still be starting.
-  }
-  return rendererTimeZone;
-}
-
 /** Read a folder from Quark's JSON API by fid. Root is `fid=0`. */
-export async function listQuarkFolderInBrowser(
-  page: Page,
+export async function listQuarkFolder(
+  transport: QuarkTransport,
   fid: string = ROOT_FID,
   options: CollectQuarkFileListOptions = {},
 ): Promise<QuarkFileListApiResult> {
@@ -338,7 +319,7 @@ export async function listQuarkFolderInBrowser(
   const pages: QuarkFileListApiPage[] = [];
   const items = await collectQuarkFileList(
     (pageNumber) =>
-      fetchQuarkFileListPageInBrowser(page, targetFid, pageNumber),
+      fetchQuarkFileListPage(transport, targetFid, pageNumber),
     {
       ...options,
       onPage: (apiPage) => {
@@ -347,10 +328,9 @@ export async function listQuarkFolderInBrowser(
       },
     },
   );
-  const timeZone = await getRendererTimeZone(page);
   return {
     fid: targetFid,
-    items: items.map((item) => mapQuarkFileListItem(item, timeZone)),
+    items: items.map((item) => mapQuarkFileListItem(item)),
     total: items.length,
     ...(options.raw
       ? {

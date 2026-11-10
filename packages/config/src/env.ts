@@ -28,25 +28,10 @@ function envBool(name: string, def: boolean): boolean {
 /** Public REST/MCP/VNC port. */
 export const SERVER_PORT = envInt("SERVER_PORT", 3000);
 
-/**
- * How the service reaches the process manager.
- *
- * - `embedded` (default): one process owns it directly — no HTTP hop.
- * - `http`: a manager in another container/process; `MANAGER_URL` is used.
- */
-export const MANAGER_MODE = (env["QUARK_MANAGER_MODE"] ?? "embedded")
-  .trim()
-  .toLowerCase();
-
-/** Base URL of a remote manager, used when `MANAGER_MODE` is `http`. */
-export const MANAGER_URL = env["QUARK_MANAGER_URL"] ??
-  env["SERVER_URL"] ??
-  `http://127.0.0.1:${SERVER_PORT}/manager`;
-
 // ── Quark renderer transport ────────────────────────────────────────────────
 
-/** CDP proxy port — where the service attaches to the Quark renderer. */
-export const CDP_URL = env["CDP_URL"] ?? "http://127.0.0.1:9223";
+/** Internal Quark CDP endpoint; bypass the diagnostic proxy. */
+export const CDP_URL = env["CDP_URL"] ?? `http://127.0.0.1:${envInt("QUARK_CDP_PORT", 9222)}`;
 
 /** Raw VNC endpoint (x11vnc); the noVNC page proxies to it. */
 export const VNC_URL = env["VNC_URL"] ?? "http://127.0.0.1:5900";

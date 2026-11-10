@@ -2,10 +2,10 @@ import type { QuarkUserInfo } from "@quark/contract/schemas";
 import { log } from "@quark/config";
 import { getOperationQueue } from "../browser/context.ts";
 import { userInfoCache } from "../cache/caches.ts";
-import { getQuarkPage } from "./browser-session.ts";
-import { fetchQuarkMemberInBrowser } from "./user-info-api.ts";
+import { getQuarkTransport } from "./quark-session.ts";
+import { fetchQuarkMember } from "../api/user-info-api.ts";
 
-export interface UserInfoOptions {
+export interface GetAccountOptions {
   raw?: boolean;
 }
 
@@ -23,8 +23,8 @@ function projectUserInfo(
  * `raw` projection differs between callers, so the cache always holds the
  * full payload.
  */
-export function userInfo(
-  options: UserInfoOptions = {},
+export function getAccount(
+  options: GetAccountOptions = {},
 ): Promise<QuarkUserInfo> {
   const includeRaw = options.raw === true;
   const cached = userInfoCache.get("s");
@@ -33,12 +33,12 @@ export function userInfo(
   }
 
   return getOperationQueue().run(
-    "userInfo",
-    { key: "userInfo" },
+    "getAccount",
+    { key: "getAccount" },
     async () => {
-      const page = await getQuarkPage();
-      const member = await fetchQuarkMemberInBrowser(page);
-      log.debug(`userInfo: capacity="${member.capacity}"`);
+      const transport = getQuarkTransport();
+      const member = await fetchQuarkMember(transport);
+      log.debug(`getAccount: capacity="${member.capacity}"`);
 
       const result: QuarkUserInfo = {
         capacity: member.capacity,
@@ -47,7 +47,7 @@ export function userInfo(
         raw: member.raw,
       };
       userInfoCache.set("s", result);
-      return projectUserInfo(result, includeRaw);
+      return result;
     },
-  );
+  ).then((result) => projectUserInfo(result, includeRaw));
 }

@@ -5,18 +5,20 @@ import type {
   QuarkDownloadTask,
 } from "@quark/contract/schemas";
 import { log } from "@quark/config";
-import { getQuarkPage } from "./browser-session.ts";
+import { getQuarkPage } from "./quark-session.ts";
 import {
   controlQuarkDownloadInBrowser,
+  hasActiveQuarkDownloadsInBrowser,
   mapLocalDownloadTask,
   readQuarkDownloadQueueInBrowser,
-} from "./download-disk-api.ts";
+} from "../browser/download-engine.ts";
 
-export interface DownloadTaskListOptions {
+export interface ListDownloadsOptions {
+  taskId?: string;
   raw?: boolean;
 }
 
-export interface UpdateDownloadTaskInput {
+export interface ControlDownloadsInput {
   taskIds: string[];
   operation: QuarkDownloadOperation;
   raw?: boolean;
@@ -27,8 +29,8 @@ export interface UpdateDownloadTaskInput {
  * download fans out into per-file children inside the app, and those would
  * otherwise drown the queue the caller asked about.
  */
-export async function downloadTaskList(
-  options: DownloadTaskListOptions = {},
+export async function listDownloads(
+  options: ListDownloadsOptions = {},
 ): Promise<QuarkDownloadQueue> {
   const page = await getQuarkPage();
   const snapshot = await readQuarkDownloadQueueInBrowser(page);
@@ -40,7 +42,8 @@ export async function downloadTaskList(
     return parent === "" || !ids.has(parent);
   });
 
-  const tasks: QuarkDownloadTask[] = roots.map(mapLocalDownloadTask);
+  const tasks: QuarkDownloadTask[] = roots.map(mapLocalDownloadTask)
+    .filter((task) => task.taskId && (options.taskId === undefined || task.taskId === options.taskId));
   const counts = {
     total: tasks.length,
     running: tasks.filter((task) => task.status === "running").length,
@@ -49,7 +52,7 @@ export async function downloadTaskList(
     failed: tasks.filter((task) => task.status === "error").length,
   };
   log.debug(
-    `downloadTaskList: ${counts.total} task(s), ${counts.running} running`,
+    `listDownloads: ${counts.total} task(s), ${counts.running} running`,
   );
 
   return {
@@ -61,15 +64,13 @@ export async function downloadTaskList(
   };
 }
 
-/** Pause, resume or cancel local downloads started by POST /download-file. */
-export async function updateDownloadTask(
-  input: UpdateDownloadTaskInput,
+/** Pause, resume or cancel local downloads started by POST /downloads. */
+export async function controlDownloads(
+  input: ControlDownloadsInput,
 ): Promise<QuarkDownloadControlResult> {
-  const taskIds = input.taskIds.map((taskId) => taskId.trim()).filter(
-    (taskId) => taskId !== "",
-  );
+  const taskIds = [...new Set(input.taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
   if (taskIds.length === 0) {
-    throw new Error("updateDownloadTask: taskIds is required");
+    throw new Error("controlDownloads: taskIds is required");
   }
 
   const page = await getQuarkPage();
@@ -78,15 +79,20 @@ export async function updateDownloadTask(
     operation: input.operation,
   });
   log.debug(
-    `updateDownloadTask: ${input.operation} ${result.applied.length} task(s), ` +
+    `controlDownloads: ${input.operation} ${result.applied.length} task(s), ` +
       `${result.removedPartials.length} partial(s) removed`,
   );
 
   return {
-    success: true,
+    success: result.applied.length === taskIds.length,
     taskIds: result.applied,
     operation: input.operation,
     removedPartials: result.removedPartials,
     ...(input.raw === true ? { raw: result.raw } : {}),
   };
+}
+
+/** Check root and child transfers before the runtime goes idle. */
+export async function hasActiveDownloads(): Promise<boolean> {
+  return hasActiveQuarkDownloadsInBrowser(await getQuarkPage());
 }

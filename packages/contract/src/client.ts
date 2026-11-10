@@ -2,17 +2,15 @@ import { eventIterator, oc } from "@orpc/contract";
 import { z } from "zod";
 import { sharedErrorMap } from "./errors.ts";
 import {
-  BrowserQueueStatusSchema,
   ClientEventSchema,
-  HealthzSchema,
   QuarkDownloadControlResultSchema,
-  QuarkDownloadFileResultSchema,
   QuarkDownloadOperationSchema,
   QuarkDownloadQueueSchema,
   QuarkDownloadStartResultSchema,
   QuarkFileInfoSchema,
   QuarkFileListSchema,
-  QuarkImportShareLinkResultSchema,
+  QuarkShareImportSchema,
+  QuarkShareSubmissionSchema,
   QuarkLoginStatusSchema,
   QuarkShareUrlSchema,
   QuarkTaskListSchema,
@@ -28,35 +26,20 @@ import {
   ServerStatusSchema,
 } from "./schemas.ts";
 
-/**
- * @quark/service contract — the orchestration + business surface.
- *
- * Every business procedure is a direct call to Quark's cloud-drive JSON API,
- * issued inside the logged-in renderer. Nothing drives the Quark UI: there is
- * no DOM navigation, no virtual scrolling, and no click automation, so long
- * write operations are plain JSON too (no SSE progress streams).
- *
- * Locators are always Quark `fid`s. The drive root is `fid=0`. Results never
- * carry a provenance `source` because there is only one path. Every business
- * response accepts `raw=true` to add the untouched Quark payload under `raw`.
- *
- * Naming: procedures avoid `get_`/`set_` prefixes where the HTTP method is
- * sufficient (`listFile`, `taskList`, `loginStatus`). `/task-list` is a single
- * resource: GET reads Quark's cloud task list, POST mutates tasks.
- */
+/** Shared REST contract. Only drive and sign-in procedures opt into MCP. */
 export const clientContract = oc.errors(sharedErrorMap).router({
   config: oc.route({
     method: "GET",
     path: "/config",
-    description: "Read the persisted monitor and guard configuration.",
-  }).meta({ mcp: { tool: true } }).output(RuntimeConfigSchema),
+    description: "Read the persisted idle monitor settings.",
+  }).output(RuntimeConfigSchema),
 
   updateConfig: oc.route({
     method: "PATCH",
     path: "/config",
     inputStructure: "detailed",
-    description: "Patch and persist monitor/guard configuration.",
-  }).meta({ mcp: { tool: true } })
+    description: "Patch and persist idle monitor settings.",
+  })
     .input(z.object({ body: RuntimeConfigPatchSchema }))
     .output(RuntimeConfigSchema),
 
@@ -67,29 +50,7 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       "Quantified runtime status: process, login renderer, cloud tasks,",
       "operation queue, health score, monitor decision, and guard state.",
     ].join("\n"),
-  }).meta({ mcp: { tool: true } }).output(RuntimeStatusSchema),
-
-  version: oc.route({
-    method: "GET",
-    path: "/version",
-    description: [
-      "Return the Chromium build that Quark is running on (via CDP",
-      "`Browser.getVersion`). Quick liveness check.",
-    ].join("\n"),
-  })
-    .meta({ mcp: { tool: true } })
-    .output(z.object({ version: z.string() })),
-
-  queueStatus: oc.route({
-    method: "GET",
-    path: "/queue-status",
-    description: [
-      "Snapshot of the in-process operation queue (single-slot serialization",
-      "over the one Quark window). `{running, current, queued, total}`.",
-    ].join("\n"),
-  })
-    .meta({ mcp: { tool: true } })
-    .output(BrowserQueueStatusSchema),
+  }).output(RuntimeStatusSchema),
 
   events: oc.route({
     method: "GET",
@@ -103,12 +64,10 @@ export const clientContract = oc.errors(sharedErrorMap).router({
 
   loginQRCode: oc.route({
     method: "GET",
-    path: "/login-qrcode",
+    path: "/login/qrcode",
     description: [
-      "Capture the Quark login QR code as a PNG image. This is the one",
-      "endpoint that still reads the login window: the QR code is rendered",
-      "client-side and has no JSON API yet. TODO(native-api): switch this",
-      "endpoint to Quark's native QR-login flow when it is available.",
+      "Capture the Quark sign-in QR code as a PNG image. " +
+      "Use when login_status reports the account is signed out.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
@@ -116,12 +75,11 @@ export const clientContract = oc.errors(sharedErrorMap).router({
 
   loginStatus: oc.route({
     method: "GET",
-    path: "/login-status",
+    path: "/login/status",
     inputStructure: "detailed",
     description: [
       "Probe Quark's authenticated member API to report whether the session",
       "is logged in. `loggedIn` is false when Quark answers 401/`31001`.",
-      "Set `raw=true` for the untouched member payload.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
@@ -130,13 +88,12 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     }))
     .output(QuarkLoginStatusSchema),
 
-  userInfo: oc.route({
+  getAccount: oc.route({
     method: "GET",
-    path: "/user-info",
+    path: "/account",
     inputStructure: "detailed",
     description: [
-      "Read account capacity from Quark's member API. Set `raw=true` for the",
-      "untouched member payload.",
+      "Read the signed-in account's used and total capacity.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
@@ -145,214 +102,173 @@ export const clientContract = oc.errors(sharedErrorMap).router({
     }))
     .output(QuarkUserInfoSchema),
 
-  listFile: oc.route({
+  listFiles: oc.route({
     method: "GET",
-    path: "/list-file",
+    path: "/files",
     inputStructure: "detailed",
     description: [
       "List a folder straight from Quark's JSON file API. `fid` is the only",
       "locator; it defaults to the drive root `0`, and every item carries its",
-      "own `fid`. Set `raw=true` to include the untouched API items and page",
-      "metadata.",
+      "own `fid`.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
       query: z.object({
-        fid: z.string().min(1).optional(),
+        fid: z.string().trim().min(1).optional(),
         raw: RawOptionSchema,
       }).strict().optional(),
     }))
     .output(QuarkFileListSchema),
 
-  fileInfo: oc.route({
+  getFile: oc.route({
     method: "GET",
-    path: "/file-info",
+    path: "/files/info",
     inputStructure: "detailed",
     description: [
       "Resolve one file or folder by `fid` via Quark's file/info API: name,",
-      "parent `dirFid`, size, type, and mtime. Set `raw=true` for the",
-      "untouched entry.",
+      "parent `dirFid`, size, type, and modification time.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
-      query: z.object({ fid: z.string().min(1), raw: RawOptionSchema })
+      query: z.object({ fid: z.string().trim().min(1), raw: RawOptionSchema })
         .strict(),
     }))
     .output(QuarkFileInfoSchema),
 
-  downloadFile: oc.route({
-    method: "GET",
-    path: "/download-file",
-    inputStructure: "detailed",
-    description: [
-      "Resolve fresh signed download URLs for one `fid` without writing to",
-      "disk. A file resolves through `/file/download`. A folder is scanned",
-      "through `/download/list` and returns its flattened file list, each file",
-      "with its own URL (`limit` bounds how many URLs are resolved). The URLs",
-      "are short-lived and signed, and Quark's CDN rejects plain HTTP clients",
-      "(`412`), so this is a low-level escape hatch — use POST /download-file",
-      "(MCP `download_file`) to actually download. Set `raw=true` for the",
-      "action payload.",
-    ].join("\n"),
-  })
-    // MCP name: this one only mints URLs; `download_file` is the real download.
-    .meta({ mcp: { tool: true, name: "download_urls" } })
-    .input(z.object({
-      query: z.object({
-        fid: z.string().min(1),
-        limit: z.coerce.number().int().min(1).max(5_000).optional(),
-        raw: RawOptionSchema,
-      }).strict(),
-    }))
-    .output(QuarkDownloadFileResultSchema),
-
-  // POST on the same path: GET resolves signed URLs, POST actually starts a
-  // local download through the Quark app's own transfer engine.
   startDownload: oc.route({
     method: "POST",
-    path: "/download-file",
+    path: "/downloads",
     inputStructure: "detailed",
-    description: [
-      "Actually download one `fid` to disk: hand it to the Quark app's",
-      "built-in downloader, which writes into the app's Downloads folder (or",
-      "`toDir`) and keeps a resumable `.qkdownloading` partial until it",
-      "finishes. Track it with GET /download-task. Use GET /download-file",
-      "(MCP `download_urls`) instead when you only want signed URLs and no",
-      "disk write. Set `raw=true` for the action payload.",
-    ].join("\n"),
+    description:
+      "Queue a file or an entire folder by fid in the local Downloads directory. " +
+      "This returns a task ID when queued; use list_downloads with that ID and " +
+      "wait for status=finish before treating the file as available.",
   })
-    // MCP name: this is the tool callers mean by "download this file".
-    .meta({ mcp: { tool: true, name: "download_file" } })
+    .meta({ mcp: { tool: true } })
     .input(z.object({
-      body: z.object({
-        fid: z.string().min(1),
-        toDir: z.string().min(1).optional().describe(
-          "Destination directory as the app sees it (Windows-style under " +
-            "Wine). Defaults to the app's own Downloads folder.",
-        ),
-        raw: RawOptionSchema,
-      }),
+      body: z.object({ fid: z.string().trim().min(1), raw: RawOptionSchema }).strict(),
     }))
     .output(QuarkDownloadStartResultSchema),
 
-  downloadTaskList: oc.route({
+  listDownloads: oc.route({
     method: "GET",
-    path: "/download-task",
+    path: "/downloads",
     inputStructure: "detailed",
-    description: [
-      "Read the local download queue — transfers started by",
-      "POST /download-file that are running, paused, failed or finished, each",
-      "with progress, speed and destination path. This is the app's own",
-      "engine, not Quark's cloud task list (`GET /task-list`). Set `raw=true`",
-      "for the untouched task objects.",
-    ].join("\n"),
+    description:
+      "List local transfers and their progress, destination and errors. " +
+      "Pass the taskId returned by start_download to track one transfer.",
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
-      query: z.object({ raw: RawOptionSchema }).strict().optional(),
+      query: z.object({
+        taskId: z.string().trim().min(1).optional(),
+        raw: RawOptionSchema,
+      }).strict().optional(),
     }))
     .output(QuarkDownloadQueueSchema),
 
-  updateDownloadTask: oc.route({
-    method: "POST",
-    path: "/download-task",
+  controlDownloads: oc.route({
+    method: "PATCH",
+    path: "/downloads",
     inputStructure: "detailed",
     description: [
       "Pause, resume or cancel local downloads by `taskIds`. `cancel` also",
-      "removes the task from the app's list and deletes the leftover",
-      "`.qkdownloading` partial. Set `raw=true` for the action payload.",
+      "removes the task from the app's list. Partial cleanup is best effort.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
       body: z.object({
-        taskIds: z.array(z.string().min(1)).min(1),
+        taskIds: z.array(z.string().trim().min(1)).min(1),
         operation: QuarkDownloadOperationSchema,
         raw: RawOptionSchema,
       }),
     }))
     .output(QuarkDownloadControlResultSchema),
 
-  // Single resource /task-list: GET reads Quark's cloud task list, POST
-  // applies an operation to one or more tasks.
-  taskList: oc.route({
+  listCloudTasks: oc.route({
     method: "GET",
-    path: "/task-list",
+    path: "/cloud-tasks",
     inputStructure: "detailed",
     description: [
       "Read Quark's cloud tasks (offline downloads, cloud saves, unzips,",
-      "uploads) with per-status counts. Set `raw=true` for the untouched",
-      "list payload.",
+      "uploads) with per-status counts. Use list_downloads for local transfers.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
       query: z.object({
         status: QuarkTaskStatusFilterSchema.optional(),
-        type: z.string().min(1).optional(),
+        type: z.string().trim().min(1).optional(),
         size: z.coerce.number().int().min(1).max(100).optional(),
-        cursor: z.string().min(1).optional(),
+        cursor: z.string().trim().min(1).optional(),
         raw: RawOptionSchema,
       }).strict().optional(),
     }))
     .output(QuarkTaskListSchema),
 
-  updateTask: oc.route({
-    method: "POST",
-    path: "/task-list",
+  controlCloudTasks: oc.route({
+    method: "PATCH",
+    path: "/cloud-tasks",
     inputStructure: "detailed",
     description: [
       "`resume` (also retries) or `delete` one or more cloud tasks by",
-      "`taskIds`. Set `raw=true` for the action payload.",
+      "`taskIds`. These are cloud tasks, separate from local downloads.",
     ].join("\n"),
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
       body: z.object({
-        taskIds: z.array(z.string().min(1)).min(1),
+        taskIds: z.array(z.string().trim().min(1)).min(1),
         operation: QuarkTaskOperationSchema,
         raw: RawOptionSchema,
       }),
     }))
     .output(QuarkUpdateTaskResultSchema),
 
-  importShareLink: oc.route({
+  saveShare: oc.route({
     method: "POST",
-    path: "/import-share-link",
+    path: "/share-imports",
     inputStructure: "detailed",
-    description: [
-      "Save a `https://pan.quark.cn/s/...` share into the drive through",
-      "Quark's share API: token -> detail -> save -> task poll. `toFid`",
-      "overrides the destination folder (defaults to Quark's `来自：分享`).",
-      "Set `raw=true` for the action payload.",
-    ].join("\n"),
+    description:
+      "Submit a Quark share to be saved into your cloud drive. " +
+      "Use a pan.quark.cn share URL or a share ID, with optional passcode " +
+      "and destination folder fid (defaults to 来自：分享; use 0 for root). " +
+      "The returned task is only submitted. Check get_share_import to confirm completion.",
   })
     .meta({ mcp: { tool: true } })
     .input(z.object({
       body: z.object({
         url: QuarkShareUrlSchema,
-        passcode: z.string().optional(),
-        toFid: z.string().optional(),
-        raw: RawOptionSchema,
-      }),
+        passcode: z.string().trim().min(1).optional(),
+        toFid: z.string().trim().min(1).optional(),
+      }).strict(),
     }))
-    .output(QuarkImportShareLinkResultSchema),
+    .output(QuarkShareSubmissionSchema),
 
-  // Manager surface — the same process/window controls @quark/manager exposes,
-  // re-exposed through this service so API + MCP consumers can drive the Quark
-  // process without talking to the manager directly. Each handler forwards to
-  // the typed manager client. `events` mirrors the manager's SSE process stream.
+  getShareImport: oc.route({
+    method: "GET",
+    path: "/share-imports",
+    inputStructure: "detailed",
+    description:
+      "Check a share save using the task ID from save_share. " +
+      "Only status=completed confirms the save. savedFids contains IDs reported by Quark.",
+  })
+    .meta({ mcp: { tool: true } })
+    .input(z.object({
+      query: z.object({
+        taskId: z.string().trim().min(1),
+        retryIndex: z.coerce.number().int().min(0).optional().describe(
+          "Use nextRetryIndex from the previous poll; omit on the first poll.",
+        ),
+      }).strict(),
+    }))
+    .output(QuarkShareImportSchema),
+
+  // HTTP-only operator controls.
   manager: oc.errors(sharedErrorMap).router({
-    healthz: oc.route({
-      method: "GET",
-      path: "/manager/healthz",
-      description: "Liveness probe of the upstream manager (@quark/manager).",
-    })
-      .meta({ mcp: { tool: true } })
-      .output(HealthzSchema),
-
     status: oc.route({
       method: "GET",
       path: "/manager/status",
@@ -361,7 +277,6 @@ export const clientContract = oc.errors(sharedErrorMap).router({
         "liveness, last CDP activity, and lifecycle counters.",
       ].join("\n"),
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     start: oc.route({
@@ -369,10 +284,9 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       path: "/manager/start",
       description: [
         "Start Quark (or restore it from minimized). Idempotent — safe to",
-        "call when already running. Waits for the CDP port to come online.",
+        "call when already running. Returns the current launch state.",
       ].join("\n"),
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     stop: oc.route({
@@ -380,7 +294,6 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       path: "/manager/stop",
       description: "Stop Quark and free its process group. Idempotent.",
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     restart: oc.route({
@@ -388,7 +301,6 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       path: "/manager/restart",
       description: "Stop then start. Useful after settings changes.",
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     minimize: oc.route({
@@ -399,7 +311,6 @@ export const clientContract = oc.errors(sharedErrorMap).router({
         "lets Chromium throttle to free CPU.",
       ].join("\n"),
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     restore: oc.route({
@@ -407,7 +318,6 @@ export const clientContract = oc.errors(sharedErrorMap).router({
       path: "/manager/restore",
       description: "Restore the minimized Quark window (X map).",
     })
-      .meta({ mcp: { tool: true } })
       .output(ServerStatusSchema),
 
     events: oc.route({

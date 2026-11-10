@@ -32,11 +32,11 @@ const QUARK_HOST = "127.0.0.1";
 // instance that would fight over the shared WINEPREFIX / single-instance app.
 const START_GRACE_MS = 60_000;
 
-// Wine/Chromium user-mode process names to match on for by-name kills. Under
-// Wine, QuarkCloudDrive.exe runs as Chromium's "CrBrowserMain" process, so the
-// binary name never appears in the process list — we match on the Chromium
-// names instead. This covers both the standard and spark runtimes.
+// Wine builds may report the Chromium thread name or the executable's
+// truncated /proc comm. Match both so an old browser cannot keep the CDP port.
 const DEFAULT_PATTERNS = [
+  "quarkclouddrive",
+  "quark_cloud_dri",
   "crbrowsermain",
   "crgpumain",
   "crutilitymain",
@@ -58,6 +58,8 @@ const DEFAULT_PATTERNS = [
 // cmdline check needed. Chromium-derived names additionally require the
 // cmdline to mention "quark" (defence in depth).
 const NAME_ONLY = new Set([
+  "quarkclouddrive",
+  "quark_cloud_dri",
   "wineserver",
   "winedevice",
   "winemenubuilder",
@@ -141,7 +143,40 @@ export class ProcessManager {
     }
   }
 
-  async start(): Promise<ServerStatus> {
+  // Startup, explicit controls and idle policy can arrive concurrently.
+  // Serialize the transitions so restart is atomic with respect to start/stop.
+  private transition: Promise<unknown> = Promise.resolve();
+
+  private serialize(run: () => Promise<ServerStatus>): Promise<ServerStatus> {
+    const next = this.transition.then(run);
+    this.transition = next.catch(() => {});
+    return next;
+  }
+
+  start(): Promise<ServerStatus> {
+    return this.serialize(() => this.startProcess());
+  }
+
+  stop(): Promise<ServerStatus> {
+    return this.serialize(() => this.stopProcess());
+  }
+
+  restart(): Promise<ServerStatus> {
+    return this.serialize(async () => {
+      await this.stopProcess();
+      return this.startProcess();
+    });
+  }
+
+  minimize(): Promise<ServerStatus> {
+    return this.serialize(() => this.minimizeWindow());
+  }
+
+  restore(): Promise<ServerStatus> {
+    return this.serialize(() => this.restoreWindow());
+  }
+
+  private async startProcess(): Promise<ServerStatus> {
     if (await this.isProcAlive()) {
       // If Chromium is serving but we think we're minimized, restore the
       // window (idempotent). Otherwise no-op.
@@ -150,7 +185,7 @@ export class ProcessManager {
       }
       if (this.state === "running_minimized") {
         try {
-          await this.restore();
+          await this.restoreWindow();
         } catch (e) {
           log.warn(`start: restore of minimized window failed: ${e}`);
         }
@@ -220,7 +255,7 @@ export class ProcessManager {
     return this.status();
   }
 
-  async stop(): Promise<ServerStatus> {
+  private async stopProcess(): Promise<ServerStatus> {
     log.info("stopping Quark");
     const candidate = this.pgid ??
       (this.proc ? readProcessGroup(this.proc.pid) : null);
@@ -279,14 +314,9 @@ export class ProcessManager {
     return this.status();
   }
 
-  async restart(): Promise<ServerStatus> {
-    await this.stop();
-    return this.start();
-  }
-
   // ── window state ───────────────────────────────────────────────────────────
 
-  async minimize(): Promise<ServerStatus> {
+  private async minimizeWindow(): Promise<ServerStatus> {
     if (this.state === "running_minimized") return this.status();
     if (!(await this.isProcAlive())) {
       throw new Error("Quark is not running");
@@ -309,7 +339,7 @@ export class ProcessManager {
     return this.status();
   }
 
-  async restore(): Promise<ServerStatus> {
+  private async restoreWindow(): Promise<ServerStatus> {
     if (this.state === "running_visible") return this.status();
     if (!(await this.isProcAlive())) {
       throw new Error("Quark is not running");
@@ -433,6 +463,9 @@ export class ProcessManager {
       const pid = Number(dirEntry);
       if (pid === myPid || pid === 1) continue;
       try {
+        const stat = await readFile(`/proc/${pid}/stat`, "utf8");
+        const state = stat[stat.lastIndexOf(")") + 2];
+        if (state === "Z") continue;
         const name = (await readFile(`/proc/${pid}/comm`, "utf8")).trim()
           .toLowerCase();
         if (!this.patterns.some((p) => name.includes(p))) continue;

@@ -4,7 +4,7 @@ import {
   localDownloadStatusName,
   mapLocalDownloadTask,
   QUARK_PARTIAL_DOWNLOAD_SUFFIX,
-} from "./download-disk-api.ts";
+} from "./download-engine.ts";
 
 test("localDownloadStatusName decodes every app status code", () => {
   assertEquals(localDownloadStatusName(-1), "error");

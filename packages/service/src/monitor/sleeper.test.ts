@@ -43,7 +43,7 @@ test("idle at/over stop threshold while minimized → stop", () => {
   assertEquals(decision.action, "stop");
 });
 
-test("stop threshold ignored when minimize disabled", () => {
+test("stop threshold works when minimize is disabled", () => {
   const cfg = { minimizeAfterMs: 0, stopAfterMs: 1_800_000 };
   assertEquals(
     decideIdleAction("running_visible", false, 300_000, cfg).action,
